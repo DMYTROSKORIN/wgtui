@@ -3,6 +3,7 @@ package sshtransport
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os/exec"
@@ -147,6 +148,32 @@ func (c *Client) SudoValidate(ctx context.Context, prompts Prompts) error {
 // straight to the PTY, never to argv or the environment (SPEC.md §23.1).
 func (c *Client) RunSudo(ctx context.Context, remoteCmd string, prompts Prompts) (Result, error) {
 	args := append(c.baseArgs(), "-tt", c.target.HostOrAlias, "sudo "+remoteCmd)
+	out, err := c.runInteractive(ctx, args, prompts)
+	res := Result{Stdout: out}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		res.ExitCode = exitErr.ExitCode()
+		return res, nil
+	}
+	return res, err
+}
+
+// RunSudoScript runs an arbitrary multi-line bash script as root, used by
+// internal/transaction to send its whole backup/write/validate/apply
+// sequence as one atomic remote round trip instead of several separate
+// RunSudo calls (fewer round trips, smaller window for concurrent state
+// change, and only one sudo password prompt).
+//
+// The script is base64-encoded for transport - `echo <b64> | base64 -d |
+// sudo bash` - so its own internal quoting (a caller typically embeds a
+// config file's content via a heredoc) never has to interact with the
+// outer command-line quoting: the outer shell only ever sees base64
+// alphabet characters. `bash`, not `sh`, because the transaction script
+// uses `<(...)` process substitution for `wg syncconf`, which dash (the
+// default /bin/sh on Debian/Ubuntu) does not support.
+func (c *Client) RunSudoScript(ctx context.Context, script string, prompts Prompts) (Result, error) {
+	encoded := base64.StdEncoding.EncodeToString([]byte(script))
+	remoteCmd := "echo " + encoded + " | base64 -d | sudo bash"
+	args := append(c.baseArgs(), "-tt", c.target.HostOrAlias, remoteCmd)
 	out, err := c.runInteractive(ctx, args, prompts)
 	res := Result{Stdout: out}
 	if exitErr, ok := err.(*exec.ExitError); ok {
