@@ -80,6 +80,25 @@ of depending on a cross-process cache; `SudoValidate` remains useful only as an 
 fail-fast check that the supplied password is correct. See `internal/sshtransport/client.go`
 doc comments for the mechanism.
 
+**Stage 3 findings (empirically confirmed by connecting to a disposable VM with no prior
+`known_hosts` entry - the first time any live test had actually exercised this path,
+since every previously-tested target, including nas.paynet.one, was already known):**
+
+- ssh's host-key confirmation banner is multi-line - the "authenticity of host" warning
+  and fingerprint on earlier lines, the actual `(yes/no/[fingerprint])?` question on the
+  last - but `runInteractive`'s prompt-detection buffer resets on every `\n`, so a
+  condition needing text from two different lines could never fire. The branch had been
+  silently unreachable since Stage 0. Fixed by matching only the self-contained question
+  line (`isHostKeyQuestionLine`); the `HostKey` callback still receives the full banner
+  via the separately-tracked full capture buffer, not the now-single-line prompt snapshot.
+- Every `ssh` subprocess inherited `SSH_ASKPASS` from the calling environment. Most
+  desktop Linux sessions set this, and ssh can divert an interactive prompt - confirmed
+  for the host-key question - to that external GUI helper instead of the PTY `wgtui`
+  allocated and is reading from; if the helper can't handle the prompt or there's no
+  display, the exchange hangs until wgtui's own timeout kills it. Fixed by forcing
+  `SSH_ASKPASS_REQUIRE=never` on every ssh invocation (`newSSHCmd`), so prompt handling is
+  deterministic regardless of the environment wgtui runs in.
+
 ### osadapter
 
 Per-distribution adapters (Ubuntu/Debian/Fedora in MVP) for:
@@ -92,6 +111,24 @@ Per-distribution adapters (Ubuntu/Debian/Fedora in MVP) for:
   executes without explicit confirmation from the caller.
 
 Unsupported distributions get a read-only report, never a guessed mutation (spec §29.6).
+
+NAT/forwarding for a new interface is embedded as `PostUp`/`PostDown` iptables rules tied
+to the interface's own up/down lifecycle (`osadapter.NewInterfaceSpec.NAT`), the same
+pattern the project's own reference server already uses in practice - it works regardless
+of which firewall front-end is active and never touches an existing table, so §13.5's "не
+сбрасывать таблицы и цепочки" holds by construction. The firewall adapter's own job is
+narrower: just open the WireGuard UDP port on whichever backend is detected.
+
+**Stage 3 findings (empirically confirmed against a disposable QEMU VM, never against
+nas.paynet.one - SPEC.md §29.13):**
+
+- `wg-quick strip <path>` requires the path's basename to be exactly `<interface-name>.conf`
+  - this affects any code that hands it a differently-named file, not just `transaction`'s
+    temp files (see that package's section below for the first instance of this).
+- Testing this stage's install/setup flow against a target with *no* prior `known_hosts`
+  entry - something every previous live test had accidentally never exercised, since
+  nas.paynet.one was already known - surfaced two real bugs in `sshtransport`'s host-key
+  confirmation path, documented in that section below.
 
 ### wgconfig
 
