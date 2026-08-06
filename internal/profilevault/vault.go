@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"golang.org/x/crypto/argon2"
 
@@ -33,14 +34,49 @@ const (
 	saltLen      = 16
 )
 
-// Registry is the vault's plaintext payload once decrypted. Stage 1 only
-// stores the server list (no secrets beyond an identity file *path* -
-// SPEC.md §6.3); the peer metadata registry and generated client profiles
-// (SPEC.md §16.1, §7.3) are added here in Stage 2 without needing a format
-// migration, since this whole struct is what gets encrypted as one blob.
+// Registry is the vault's plaintext payload once decrypted.
 type Registry struct {
 	Servers []domain.Server `json:"servers"`
+	// Peers is the local metadata registry from SPEC.md §16.1: it links
+	// server-id+public-key to a name/notes/status, since WireGuard itself
+	// has no such concept.
+	Peers []PeerMetadata `json:"peers"`
+	// Profiles holds generated client .conf text - including each
+	// profile's private key - keyed by profileKey(serverID, publicKey).
+	// This is the SPEC.md §7.3 local profile vault: rather than separate
+	// plaintext files under a profiles/ directory, profile content lives
+	// inside this same encrypted blob, consistent with decision §30.4
+	// (master-password-encrypted local storage).
+	Profiles map[string]string `json:"profiles"`
 }
+
+// PeerMetadata is one entry in the local peer registry (SPEC.md §16.1).
+type PeerMetadata struct {
+	ServerID  string    `json:"server_id"`
+	Name      string    `json:"name"`
+	PublicKey string    `json:"public_key"`
+	Notes     string    `json:"notes"`
+	CreatedAt time.Time `json:"created_at"`
+	// Status is wgtui's own bookkeeping - "active", "disabled", or
+	// "revoked" - not a WireGuard concept.
+	Status string `json:"status"`
+	// DisabledBlockRaw holds the exact original wgconfig.Block text (as
+	// "HeaderRaw+Body") of a disabled peer's persistent-config entry, so
+	// a later `peer enable` (a separate process invocation) can restore
+	// the identical bytes rather than reconstructing an approximation
+	// (SPEC.md §17.4: "вернуть тот же peer").
+	DisabledBlockRaw string `json:"disabled_block_raw,omitempty"`
+	// LocalProfilePath is set only if the profile was also exported to
+	// an external file (SPEC.md §7.1); "" means it only lives in this
+	// vault's Profiles map.
+	LocalProfilePath string `json:"local_profile_path,omitempty"`
+}
+
+const (
+	PeerStatusActive   = "active"
+	PeerStatusDisabled = "disabled"
+	PeerStatusRevoked  = "revoked"
+)
 
 // Vault is an unlocked, in-memory view of the encrypted registry. It is
 // only ever constructed via New (first run) or Open (subsequent runs) so
