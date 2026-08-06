@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -51,6 +52,25 @@ func NewClient(target Target, controlPath string) *Client {
 	return &Client{target: target, controlPath: controlPath}
 }
 
+// newSSHCmd builds an exec.Cmd for the ssh binary with SSH_ASKPASS_REQUIRE
+// forced to "never". Without this, ssh honors an inherited SSH_ASKPASS
+// (set by essentially every desktop Linux session, e.g. KDE's
+// ksshaskpass) and can divert a prompt to that external GUI helper
+// instead of writing it to the PTY we allocated and are reading from -
+// confirmed while testing against a disposable VM: a first-time host-key
+// confirmation silently went to a GUI dialog neither we nor the
+// interactive user watching the terminal could answer, hanging until our
+// own timeout killed it. This had never been exercised before because
+// every previously-tested target was already a known host, so Dial()
+// never hit the host-key-prompt branch live. Forcing "never" here makes
+// prompt handling deterministic regardless of the environment wgtui runs
+// in.
+func newSSHCmd(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "ssh", args...)
+	cmd.Env = append(os.Environ(), "SSH_ASKPASS_REQUIRE=never")
+	return cmd
+}
+
 func (c *Client) baseArgs() []string {
 	args := []string{
 		"-q", // suppress ssh's own client-side diagnostics (e.g. "Shared
@@ -89,7 +109,7 @@ func (c *Client) Dial(ctx context.Context, prompts Prompts) error {
 // master is not treated as an error worth surfacing.
 func (c *Client) Close(ctx context.Context) {
 	args := append(c.baseArgs(), "-O", "exit", c.target.HostOrAlias)
-	_ = exec.CommandContext(ctx, "ssh", args...).Run()
+	_ = newSSHCmd(ctx, args...).Run()
 }
 
 // Result is the outcome of a non-interactive remote command.
@@ -104,7 +124,7 @@ type Result struct {
 // hanging if it would unexpectedly need to prompt.
 func (c *Client) RunCommand(ctx context.Context, remoteCmd string) (Result, error) {
 	args := append(c.baseArgs(), "-o", "BatchMode=yes", c.target.HostOrAlias, remoteCmd)
-	cmd := exec.CommandContext(ctx, "ssh", args...)
+	cmd := newSSHCmd(ctx, args...)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -216,7 +236,7 @@ func normalizePTYCapture(out []byte) []byte {
 // Dial/SudoValidate call (no real command output expected) callers ignore
 // this; RunSudo returns it as the command's captured stdout.
 func (c *Client) runInteractive(ctx context.Context, args []string, prompts Prompts) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "ssh", args...)
+	cmd := newSSHCmd(ctx, args...)
 	f, err := pty.Start(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("start pty: %w", err)
@@ -261,10 +281,28 @@ func (c *Client) runInteractive(ctx context.Context, args []string, prompts Prom
 		}
 
 		switch {
-		case strings.Contains(text, "authenticity of host") && strings.Contains(text, "?"):
+		case isHostKeyQuestionLine(text):
+			// ssh's host-key confirmation is a multi-line banner: "The
+			// authenticity of host '...' can't be established." and the
+			// fingerprint are on earlier lines, but this loop's lineBuf
+			// resets on every '\n' (see the b == '\n' case below), so by
+			// the time the actual "(yes/no/[fingerprint])?" question line
+			// arrives, lineBuf no longer contains those earlier lines -
+			// matching on "authenticity of host" here (as this used to)
+			// could never be true at the same time as the trailing "?",
+			// so this branch was silently unreachable in real use.
+			// Confirmed by running against a disposable VM freshly
+			// generating a first-time host key: every previous live
+			// target had happened to already be in known_hosts, so this
+			// path had never actually executed until then. Matching only
+			// the self-contained final question line - which the pattern
+			// above does - fixes the trigger; the fingerprint the user
+			// needs to see is recovered separately below from the full
+			// captured buffer, since lineBuf itself no longer has it.
+			fullPrompt := full.String()[outputStart:]
 			ok := false
 			if prompts.HostKey != nil {
-				ok = prompts.HostKey(text)
+				ok = prompts.HostKey(fullPrompt)
 			}
 			if ok {
 				io.WriteString(f, "yes\n")
@@ -305,6 +343,18 @@ func (c *Client) runInteractive(ctx context.Context, args []string, prompts Prom
 			lineBuf.Reset()
 		}
 	}
+}
+
+// isHostKeyQuestionLine matches ssh's host-key confirmation question -
+// deliberately just the self-contained final line ("Are you sure you want
+// to continue connecting (yes/no/[fingerprint])? "), not anything from the
+// earlier "The authenticity of host ... can't be established." / fingerprint
+// lines of that banner, since lineBuf (this function's only caller passes
+// its current contents) resets on every '\n' and would never contain text
+// from two different lines at once.
+func isHostKeyQuestionLine(text string) bool {
+	return strings.Contains(text, "Are you sure you want to continue connecting") &&
+		strings.HasSuffix(strings.TrimRight(text, " "), "?")
 }
 
 func isTimeoutErr(err error) bool {
