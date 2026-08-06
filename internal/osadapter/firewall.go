@@ -81,6 +81,64 @@ func PlanOpenPort(backend string, udpPort int) (FirewallPlan, error) {
 	}
 }
 
+// IsPortOpen reads the current firewall state for backend and reports
+// whether udpPort already looks allowed (SPEC.md §13.5's "прочитать
+// существующие правила" step). Callers should skip ApplyFirewallPlan when
+// this is true - `ufw allow`/`firewall-cmd --add-port` are themselves
+// idempotent, but plain `nft add rule`/`iptables -A` are not: reapplying
+// unconditionally would pile up duplicate rules on every re-run of
+// `server configure` instead of being safe to repeat.
+func IsPortOpen(ctx context.Context, client *sshtransport.Client, prompts sshtransport.Prompts, backend string, udpPort int) (bool, error) {
+	cmd, ok := statusCommandFor(backend)
+	if !ok {
+		return false, fmt.Errorf("unsupported firewall backend %q", backend)
+	}
+	res, err := client.RunSudo(ctx, cmd, prompts)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", cmd, err)
+	}
+	if res.ExitCode != 0 {
+		return false, fmt.Errorf("%s exited %d: %s", cmd, res.ExitCode, res.Stderr)
+	}
+	return portLooksOpen(backend, string(res.Stdout), strconv.Itoa(udpPort)), nil
+}
+
+func statusCommandFor(backend string) (string, bool) {
+	switch backend {
+	case "ufw":
+		return "ufw status", true
+	case "firewalld":
+		return "firewall-cmd --list-ports", true
+	case "nftables":
+		return "nft list ruleset", true
+	case "iptables":
+		return "iptables -S INPUT", true
+	default:
+		return "", false
+	}
+}
+
+// portLooksOpen is a best-effort text match against each backend's status
+// output - split out from IsPortOpen so it can be unit tested with
+// captured sample output instead of a live server.
+func portLooksOpen(backend, statusOutput, port string) bool {
+	switch backend {
+	case "ufw":
+		return strings.Contains(statusOutput, port+"/udp")
+	case "firewalld":
+		for _, tok := range strings.Fields(statusOutput) {
+			if tok == port+"/udp" {
+				return true
+			}
+		}
+		return false
+	case "nftables", "iptables":
+		return strings.Contains(statusOutput, "dport "+port)
+	default:
+		return false
+	}
+}
+
 // ApplyFirewallPlan runs plan's commands in order, stopping at the first
 // failure.
 func ApplyFirewallPlan(ctx context.Context, client *sshtransport.Client, prompts sshtransport.Prompts, plan FirewallPlan) error {

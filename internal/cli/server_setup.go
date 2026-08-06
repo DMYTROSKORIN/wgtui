@@ -189,6 +189,11 @@ func runServerConfigure(args []string, stdout, stderr io.Writer) int {
 	backend := osadapter.DetectFirewallBackend(ctx, client)
 	if backend == "" {
 		fmt.Fprintln(stdout, "No supported firewall backend detected - open UDP port", *port, "manually if traffic is being filtered.")
+	} else if alreadyOpen, err := osadapter.IsPortOpen(ctx, client, prompts, backend, *port); err != nil {
+		fmt.Fprintf(stderr, "wgtui server configure: check existing firewall rules: %v\n", err)
+		return 1
+	} else if alreadyOpen {
+		fmt.Fprintf(stdout, "Firewall (%s): UDP %d already open, nothing to do.\n", backend, *port)
 	} else {
 		fwPlan, err := osadapter.PlanOpenPort(backend, *port)
 		if err != nil {
