@@ -47,6 +47,13 @@ Usage:
   wgtui server add <id> --ssh-host <host> [--ssh-user <user>] [--ssh-port <port>] [--ssh-identity <path>] [--display-name <name>]
   wgtui server inspect <id> [--json]
   wgtui peer list <id> [--json]
+  wgtui peer add <id> --name <name> [--full-tunnel | --split-tunnel <cidrs>] [--keepalive N] [--dns <ips>]
+                 [--endpoint-host <host>] [--no-psk] [--output <path>] [--qr] [--show] [--yes] [--json]
+  wgtui peer disable <id> <peer-name> [--yes]
+  wgtui peer enable <id> <peer-name> [--yes]
+  wgtui peer revoke <id> <peer-name> [--delete-profile] [--delete-metadata] [--yes]
+  wgtui peer rotate <id> <peer-name> [--yes]
+  wgtui peer export <id> <peer-name> --output <path> [--force]
   wgtui diagnose <id> [--json]
   wgtui version
 

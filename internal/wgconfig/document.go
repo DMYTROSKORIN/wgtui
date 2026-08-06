@@ -126,6 +126,26 @@ func (b *Block) SaveConfigEnabled() bool {
 	return strings.EqualFold(b.directiveValue("SaveConfig"), "true")
 }
 
+// Value returns the value of an arbitrary directive in this block's body
+// ("" if absent), for callers that need a field PublicKey/SaveConfigEnabled
+// don't already cover (e.g. reading AllowedIPs/Endpoint back out of a
+// previously generated block or profile).
+func (b *Block) Value(key string) string {
+	return b.directiveValue(key)
+}
+
+// FirstPeerBlock returns the first "[Peer]" block in d, if any - useful
+// for re-reading a single-peer client profile (which also parses fine as
+// a Document: it has one [Interface] and one [Peer] block).
+func (d *Document) FirstPeerBlock() (*Block, bool) {
+	for _, blk := range d.Blocks {
+		if blk.Kind == "peer" {
+			return blk, true
+		}
+	}
+	return nil, false
+}
+
 func (b *Block) directiveValue(key string) string {
 	sc := bufio.NewScanner(strings.NewReader(b.Body))
 	for sc.Scan() {

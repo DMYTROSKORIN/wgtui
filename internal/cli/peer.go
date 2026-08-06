@@ -17,11 +17,29 @@ import (
 )
 
 func runPeer(args []string, stdout, stderr io.Writer) int {
-	if len(args) < 1 || args[0] != "list" {
-		fmt.Fprintln(stderr, "wgtui peer: expected subcommand 'list'")
+	if len(args) < 1 {
+		fmt.Fprintln(stderr, "wgtui peer: expected a subcommand (list, add, disable, enable, revoke, rotate, import, export)")
 		return 2
 	}
-	return runPeerList(args[1:], stdout, stderr)
+	switch args[0] {
+	case "list":
+		return runPeerList(args[1:], stdout, stderr)
+	case "add":
+		return runPeerAdd(args[1:], stdout, stderr)
+	case "disable":
+		return runPeerDisable(args[1:], stdout, stderr)
+	case "enable":
+		return runPeerEnable(args[1:], stdout, stderr)
+	case "revoke":
+		return runPeerRevoke(args[1:], stdout, stderr)
+	case "rotate":
+		return runPeerRotate(args[1:], stdout, stderr)
+	case "export":
+		return runPeerExport(args[1:], stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "wgtui peer: unknown subcommand %q\n", args[0])
+		return 2
+	}
 }
 
 // peerView is the JSON shape from SPEC.md §21's example. Stage 1 has no
