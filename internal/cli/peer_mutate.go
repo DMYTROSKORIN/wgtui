@@ -15,9 +15,25 @@ import (
 
 	"github.com/DMYTROSKORIN/wgtui/internal/peerops"
 	"github.com/DMYTROSKORIN/wgtui/internal/profilevault"
+	"github.com/DMYTROSKORIN/wgtui/internal/sshtransport"
 	"github.com/DMYTROSKORIN/wgtui/internal/transaction"
 	"github.com/DMYTROSKORIN/wgtui/internal/wgconfig"
 )
+
+// resolvePeerInterface prefers the interface recorded in a peer's own
+// metadata (set at `peer add` time) over guessing: on a multi-interface
+// server, peerops.ResolveInterface's "exactly one active interface, or
+// tell me which" fallback can't know which interface a *specific* peer
+// lives on. metaInterface is "" for entries created before this field
+// existed, or for peers registered via `peer import` without it set -
+// flagInterface (an explicit --interface override) or the single-active-
+// interface fallback still cover those cases.
+func resolvePeerInterface(ctx context.Context, client *sshtransport.Client, metaInterface, flagInterface string) (string, error) {
+	if metaInterface != "" {
+		return metaInterface, nil
+	}
+	return peerops.ResolveInterface(ctx, client, flagInterface)
+}
 
 // parsePeerTargetArgs handles the "<server-id> <peer-name> [flags]" shape
 // shared by disable/enable/revoke/rotate/export, peeling both positional
@@ -213,6 +229,7 @@ func runPeerAdd(args []string, stdout, stderr io.Writer) int {
 	_ = v.AddPeer(profilevault.PeerMetadata{
 		ServerID: server.ID, Name: *name, PublicKey: result.KeyPair.PublicKey,
 		CreatedAt: time.Now(), Status: profilevault.PeerStatusActive,
+		Interface: resolvedIface,
 	})
 
 	if *output != "" {
@@ -267,8 +284,10 @@ func runPeerAdd(args []string, stdout, stderr io.Writer) int {
 
 func runPeerDisable(args []string, stdout, stderr io.Writer) int {
 	var yes bool
+	var ifaceFlag string
 	serverID, name, _, ok := parsePeerTargetArgs("peer disable", args, stderr, func(fs *flag.FlagSet) {
 		fs.BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+		fs.StringVar(&ifaceFlag, "interface", "", "interface the peer is on (only needed if the peer's metadata doesn't already record it)")
 	})
 	if !ok {
 		return 2
@@ -298,7 +317,7 @@ func runPeerDisable(args []string, stdout, stderr io.Writer) int {
 	}
 	defer cleanup()
 
-	resolvedIface, err := peerops.ResolveInterface(ctx, client, "")
+	resolvedIface, err := resolvePeerInterface(ctx, client, meta.Interface, ifaceFlag)
 	if err != nil {
 		fmt.Fprintf(stderr, "wgtui peer disable: %v\n", err)
 		return 1
@@ -322,6 +341,7 @@ func runPeerDisable(args []string, stdout, stderr io.Writer) int {
 
 	meta.Status = profilevault.PeerStatusDisabled
 	meta.DisabledBlockRaw = rawBlock
+	meta.Interface = resolvedIface
 	v.UpdatePeer(meta)
 	if err := v.Save(vaultPath); err != nil {
 		fmt.Fprintf(stderr, "wgtui peer disable: applied on the server (backup: %s) but failed to save local metadata: %v\n", outcome.BackupPath, err)
@@ -334,8 +354,10 @@ func runPeerDisable(args []string, stdout, stderr io.Writer) int {
 
 func runPeerEnable(args []string, stdout, stderr io.Writer) int {
 	var yes bool
+	var ifaceFlag string
 	serverID, name, _, ok := parsePeerTargetArgs("peer enable", args, stderr, func(fs *flag.FlagSet) {
 		fs.BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+		fs.StringVar(&ifaceFlag, "interface", "", "interface the peer is on (only needed if the peer's metadata doesn't already record it)")
 	})
 	if !ok {
 		return 2
@@ -365,7 +387,7 @@ func runPeerEnable(args []string, stdout, stderr io.Writer) int {
 	}
 	defer cleanup()
 
-	resolvedIface, err := peerops.ResolveInterface(ctx, client, "")
+	resolvedIface, err := resolvePeerInterface(ctx, client, meta.Interface, ifaceFlag)
 	if err != nil {
 		fmt.Fprintf(stderr, "wgtui peer enable: %v\n", err)
 		return 1
@@ -389,6 +411,7 @@ func runPeerEnable(args []string, stdout, stderr io.Writer) int {
 
 	meta.Status = profilevault.PeerStatusActive
 	meta.DisabledBlockRaw = ""
+	meta.Interface = resolvedIface
 	v.UpdatePeer(meta)
 	if err := v.Save(vaultPath); err != nil {
 		fmt.Fprintf(stderr, "wgtui peer enable: applied on the server (backup: %s) but failed to save local metadata: %v\n", outcome.BackupPath, err)
@@ -401,10 +424,12 @@ func runPeerEnable(args []string, stdout, stderr io.Writer) int {
 
 func runPeerRevoke(args []string, stdout, stderr io.Writer) int {
 	var yes, deleteProfileFlag, deleteMetadataFlag bool
+	var ifaceFlag string
 	serverID, name, _, ok := parsePeerTargetArgs("peer revoke", args, stderr, func(fs *flag.FlagSet) {
 		fs.BoolVar(&yes, "yes", false, "skip confirmation prompts (still never deletes local data unless the flags below are also set)")
 		fs.BoolVar(&deleteProfileFlag, "delete-profile", false, "also delete the local client profile (contains the private key)")
 		fs.BoolVar(&deleteMetadataFlag, "delete-metadata", false, "also delete the local peer metadata entry")
+		fs.StringVar(&ifaceFlag, "interface", "", "interface the peer is on (only needed if the peer's metadata doesn't already record it)")
 	})
 	if !ok {
 		return 2
@@ -441,7 +466,7 @@ func runPeerRevoke(args []string, stdout, stderr io.Writer) int {
 
 	var outcome transaction.Outcome
 	if meta.Status != profilevault.PeerStatusDisabled {
-		resolvedIface, err := peerops.ResolveInterface(ctx, client, "")
+		resolvedIface, err := resolvePeerInterface(ctx, client, meta.Interface, ifaceFlag)
 		if err != nil {
 			fmt.Fprintf(stderr, "wgtui peer revoke: %v\n", err)
 			return 1
@@ -482,8 +507,10 @@ func runPeerRevoke(args []string, stdout, stderr io.Writer) int {
 
 func runPeerRotate(args []string, stdout, stderr io.Writer) int {
 	var yes bool
+	var ifaceFlag string
 	serverID, name, _, ok := parsePeerTargetArgs("peer rotate", args, stderr, func(fs *flag.FlagSet) {
 		fs.BoolVar(&yes, "yes", false, "skip the confirmation prompt")
+		fs.StringVar(&ifaceFlag, "interface", "", "interface the peer is on (only needed if the peer's metadata doesn't already record it)")
 	})
 	if !ok {
 		return 2
@@ -514,7 +541,7 @@ func runPeerRotate(args []string, stdout, stderr io.Writer) int {
 	}
 	defer cleanup()
 
-	resolvedIface, err := peerops.ResolveInterface(ctx, client, "")
+	resolvedIface, err := resolvePeerInterface(ctx, client, meta.Interface, ifaceFlag)
 	if err != nil {
 		fmt.Fprintf(stderr, "wgtui peer rotate: %v\n", err)
 		return 1
@@ -570,6 +597,7 @@ func runPeerRotate(args []string, stdout, stderr io.Writer) int {
 	// the old row, then add the new one.
 	v.RemovePeer(serverID, meta.PublicKey)
 	meta.PublicKey = result.KeyPair.PublicKey
+	meta.Interface = resolvedIface
 	_ = v.AddPeer(meta)
 
 	if err := v.Save(vaultPath); err != nil {

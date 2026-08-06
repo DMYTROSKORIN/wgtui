@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/domain"
+	"github.com/DMYTROSKORIN/wgtui/internal/profilevault"
 	"github.com/DMYTROSKORIN/wgtui/internal/sshtransport"
 	"github.com/DMYTROSKORIN/wgtui/internal/wgconfig"
 )
@@ -42,13 +43,16 @@ func runPeer(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
-// peerView is the JSON shape from SPEC.md §21's example. Stage 1 has no
-// local peer-metadata registry yet (that's Stage 2, SPEC.md §16.1), so
-// Name is a shortened public key and ProfileAvailable is always false -
-// this matches SPEC.md §16.1's own description of how an *unmanaged*/
-// unknown peer should be displayed, which is every peer at this stage.
+// peerView is the JSON shape from SPEC.md §21's example, extended with
+// Interface (Stage 4: multi-interface servers) and Managed. Name/Managed/
+// ProfileAvailable are reconciled against the local metadata registry
+// (SPEC.md §16.1) added in Stage 2 - a peer wgtui itself created shows its
+// real name and profile availability; anything found on the server but
+// not in local metadata is "unmanaged" and shown by shortened public key,
+// exactly as §16.1 describes.
 type peerView struct {
 	Name                   string `json:"name"`
+	Interface              string `json:"interface,omitempty"`
 	VPNIP                  string `json:"vpn_ip,omitempty"`
 	PublicKey              string `json:"public_key"`
 	State                  string `json:"state"`
@@ -56,6 +60,7 @@ type peerView struct {
 	RxBytes                int64  `json:"rx_bytes"`
 	TxBytes                int64  `json:"tx_bytes"`
 	ProfileAvailable       bool   `json:"profile_available"`
+	Managed                bool   `json:"managed_by_wgtui"`
 }
 
 func runPeerList(args []string, stdout, stderr io.Writer) int {
@@ -87,7 +92,7 @@ func runPeerList(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	views, err := listPeers(stdout, server)
+	views, err := listPeers(stdout, v, server)
 	if err != nil {
 		fmt.Fprintf(stderr, "wgtui peer list: %v\n", err)
 		return 1
@@ -106,7 +111,7 @@ func runPeerList(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func listPeers(out io.Writer, s domain.Server) ([]peerView, error) {
+func listPeers(out io.Writer, v *profilevault.Vault, s domain.Server) ([]peerView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -144,16 +149,48 @@ func listPeers(out io.Writer, s domain.Server) ([]peerView, error) {
 		return nil, fmt.Errorf("parse wg dump: %w", err)
 	}
 
-	now := time.Now()
-	views := make([]peerView, 0, len(dump.Peers))
-	for _, p := range dump.Peers {
+	return reconcilePeers(dump.Peers, v.ListPeers(s.ID), func(pubKey string) bool {
+		_, ok := v.GetProfile(s.ID, pubKey)
+		return ok
+	}, time.Now()), nil
+}
+
+// reconcilePeers merges runtime peers (from `wg show all dump`) with the
+// local metadata registry (SPEC.md §16.1): a peer wgtui itself created
+// shows its real name and profile availability; anything found on the
+// server but not in local metadata is "unmanaged" and shown by shortened
+// public key. A peer wgtui disabled is deliberately absent from runtime
+// *and* persistent config, but the user still asked wgtui to manage it -
+// it's included too (state "disabled") rather than vanishing from the
+// list just because it isn't on the wire right now. Pure function, no
+// network - the SSH-dependent part is entirely in listPeers above it.
+func reconcilePeers(dumpPeers []wgconfig.RuntimePeer, localPeers []profilevault.PeerMetadata, hasProfile func(publicKey string) bool, now time.Time) []peerView {
+	metaByKey := make(map[string]profilevault.PeerMetadata, len(localPeers))
+	for _, m := range localPeers {
+		metaByKey[m.PublicKey] = m
+	}
+
+	seen := make(map[string]bool, len(dumpPeers))
+	views := make([]peerView, 0, len(dumpPeers))
+	for _, p := range dumpPeers {
+		seen[p.PublicKey] = true
+		meta, managed := metaByKey[p.PublicKey]
+
 		status := domain.HandshakeStatus(now, p.LatestHandshake, domain.DefaultOnlineThreshold, false)
+		name := shortenKey(p.PublicKey)
+		if managed && meta.Name != "" {
+			name = meta.Name
+		}
+
 		pv := peerView{
-			Name:      shortenKey(p.PublicKey),
-			PublicKey: p.PublicKey,
-			State:     string(status),
-			RxBytes:   p.ReceiveBytes,
-			TxBytes:   p.TransmitBytes,
+			Name:             name,
+			Interface:        p.Interface,
+			PublicKey:        p.PublicKey,
+			State:            string(status),
+			RxBytes:          p.ReceiveBytes,
+			TxBytes:          p.TransmitBytes,
+			ProfileAvailable: hasProfile(p.PublicKey),
+			Managed:          managed,
 		}
 		if len(p.AllowedIPs) > 0 {
 			pv.VPNIP = p.AllowedIPs[0]
@@ -164,7 +201,22 @@ func listPeers(out io.Writer, s domain.Server) ([]peerView, error) {
 		}
 		views = append(views, pv)
 	}
-	return views, nil
+
+	for _, meta := range localPeers {
+		if seen[meta.PublicKey] || meta.Status != profilevault.PeerStatusDisabled {
+			continue
+		}
+		views = append(views, peerView{
+			Name:             meta.Name,
+			Interface:        meta.Interface,
+			PublicKey:        meta.PublicKey,
+			State:            string(domain.StatusDisabled),
+			ProfileAvailable: hasProfile(meta.PublicKey),
+			Managed:          true,
+		})
+	}
+
+	return views
 }
 
 func shortenKey(key string) string {
@@ -176,13 +228,13 @@ func shortenKey(key string) string {
 
 func printPeersText(out io.Writer, views []peerView) {
 	tw := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tVPN IP\tSTATE\tHANDSHAKE\tRX\tTX")
+	fmt.Fprintln(tw, "NAME\tIFACE\tVPN IP\tSTATE\tHANDSHAKE\tRX\tTX\tMANAGED")
 	for _, v := range views {
 		handshake := "never"
 		if v.LatestHandshakeSeconds != nil {
 			handshake = fmt.Sprintf("%ds ago", *v.LatestHandshakeSeconds)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%d\n", v.Name, orNone(v.VPNIP), v.State, handshake, v.RxBytes, v.TxBytes)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%v\n", v.Name, orNone(v.Interface), orNone(v.VPNIP), v.State, handshake, v.RxBytes, v.TxBytes, v.Managed)
 	}
 	tw.Flush()
 	fmt.Fprintln(out, "\nNote: \"online\" is a heuristic based on handshake recency, not proof of an active connection (SPEC.md §19).")

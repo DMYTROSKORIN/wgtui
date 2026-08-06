@@ -57,6 +57,14 @@ type PeerMetadata struct {
 	PublicKey string    `json:"public_key"`
 	Notes     string    `json:"notes"`
 	CreatedAt time.Time `json:"created_at"`
+	// Interface is the WireGuard interface this peer belongs to (e.g.
+	// "wg0"). Required on a multi-interface server (Stage 4) so
+	// disable/enable/revoke/rotate know which interface's config to look
+	// in without having to guess via peerops.ResolveInterface's
+	// only-works-with-exactly-one-active-interface fallback. "" for
+	// entries created before this field existed (single-interface
+	// servers keep working via that same fallback).
+	Interface string `json:"interface,omitempty"`
 	// Status is wgtui's own bookkeeping - "active", "disabled", or
 	// "revoked" - not a WireGuard concept.
 	Status string `json:"status"`
