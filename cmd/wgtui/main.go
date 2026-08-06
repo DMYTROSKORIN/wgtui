@@ -2,18 +2,11 @@
 package main
 
 import (
-	"fmt"
 	"os"
+
+	"github.com/DMYTROSKORIN/wgtui/internal/cli"
 )
 
-// version is set to a real value once release builds exist (docs/ARCHITECTURE.md, stage 5).
-const version = "0.0.0-dev"
-
 func main() {
-	if len(os.Args) > 1 && (os.Args[1] == "version" || os.Args[1] == "--version") {
-		fmt.Println("wgtui " + version)
-		return
-	}
-	fmt.Fprintln(os.Stderr, "wgtui: not implemented yet (stage 0 in progress, see docs/ARCHITECTURE.md)")
-	os.Exit(1)
+	os.Exit(cli.Run(os.Args[1:], os.Stdout, os.Stderr))
 }
