@@ -17,7 +17,7 @@ import (
 
 func runServer(args []string, stdout, stderr io.Writer) int {
 	if len(args) < 1 {
-		fmt.Fprintln(stderr, "wgtui server: expected a subcommand (add, inspect)")
+		fmt.Fprintln(stderr, "wgtui server: expected a subcommand (add, inspect, install-wireguard, configure)")
 		return 2
 	}
 	switch args[0] {
@@ -25,6 +25,10 @@ func runServer(args []string, stdout, stderr io.Writer) int {
 		return runServerAdd(args[1:], stdout, stderr)
 	case "inspect":
 		return runServerInspect(args[1:], stdout, stderr)
+	case "install-wireguard":
+		return runServerInstallWireguard(args[1:], stdout, stderr)
+	case "configure":
+		return runServerConfigure(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "wgtui server: unknown subcommand %q\n", args[0])
 		return 2

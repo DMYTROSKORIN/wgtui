@@ -46,6 +46,9 @@ func printUsage(w io.Writer) {
 Usage:
   wgtui server add <id> --ssh-host <host> [--ssh-user <user>] [--ssh-port <port>] [--ssh-identity <path>] [--display-name <name>]
   wgtui server inspect <id> [--json]
+  wgtui server install-wireguard <id> [--yes]
+  wgtui server configure <id> [--interface wg0] [--vpn-cidr <cidr>] [--port 51820]
+                          [--outbound-interface <if>] [--full-tunnel-default=false] [--yes]
   wgtui peer list <id> [--json]
   wgtui peer add <id> --name <name> [--full-tunnel | --split-tunnel <cidrs>] [--keepalive N] [--dns <ips>]
                  [--endpoint-host <host>] [--no-psk] [--output <path>] [--qr] [--show] [--yes] [--json]
