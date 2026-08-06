@@ -20,23 +20,29 @@ extra listening port is ever installed on the server (spec §6.1).
                             │  same request/response API │
                             └─────────────┬───────────────┘
                                           │
-                 ┌────────────────────────┼────────────────────────┐
-                 │                        │                        │
-          ┌──────▼──────┐         ┌───────▼───────┐        ┌───────▼───────┐
-          │  discovery  │         │  transaction  │        │  profilevault │
-          └──────┬──────┘         └───────┬───────┘        └───────────────┘
-                 │                        │
-        ┌────────┴────────┐      ┌────────┴────────┐
-        │                 │      │                 │
- ┌──────▼──────┐   ┌──────▼──────▼──────┐   ┌───────▼──────┐
- │  osadapter  │   │      wgconfig      │   │ sshtransport │
- └──────┬──────┘   └─────────────────────┘   └───────┬──────┘
-        │                                             │
-        └───────────────────┬─────────────────────────┘
-                             │
-                       ┌─────▼─────┐
-                       │  domain   │
-                       └───────────┘
+          ┌─────────────────────────┼─────────────────────────┐
+          │                         │                         │
+   ┌──────▼──────┐           ┌──────▼──────┐          ┌───────▼───────┐
+   │  discovery  │           │   peerops   │          │  profilevault │
+   └──────┬──────┘           └──────┬──────┘          └───────────────┘
+          │                         │
+          │                  ┌──────┴──────┐
+          │                  │             │
+          │           ┌──────▼──────┐  ┌───▼───────────┐
+          │           │ transaction │  │    wgconfig    │
+          │           └──────┬──────┘  └───────┬────────┘
+          │                  │                 │
+          └─────────┬────────┴─────────┬───────┘
+                     │                  │
+              ┌──────▼──────┐    ┌──────▼──────┐
+              │  osadapter  │    │ sshtransport │
+              └──────┬──────┘    └──────┬──────┘
+                     │                  │
+                     └────────┬─────────┘
+                               │
+                         ┌─────▼─────┐
+                         │  domain   │
+                         └───────────┘
 ```
 
 Import direction is strictly downward. `domain` imports nothing from this project.
@@ -100,9 +106,26 @@ unknown directives (spec §15.5), plus:
 ### transaction
 
 The backup → lock → apply → verify → rollback engine (spec §15.2) used by every mutating
-peer/interface operation (add/disable/resume/delete/rotate). Locking uses `flock` where
-available, falling back to atomic lock-directory creation (spec §15.3). Preferred live
-apply is `wg syncconf` fed by `wg-quick strip`, so unrelated peers are not disconnected.
+peer/interface operation (add/disable/resume/delete/rotate). Implemented as a single
+remote script per mutation (built by `internal/transaction`, run via
+`sshtransport.Client.RunSudoScript`) rather than several separate SSH round trips: one
+sudo prompt, one atomic pass, and no window between our own separate commands for the
+remote state to move out from under us. Locking uses an atomic `mkdir` lock directory
+(spec §15.3's documented fallback, used unconditionally here since a `flock` held by one
+`ssh` process can't be relied on to still be held by a *different* process for a later
+step anyway — see sshtransport's `RunSudo` doc comment for the same reasoning applied to
+sudo's own cache). Live apply is `wg syncconf` fed by `wg-quick strip`, so unrelated peers
+are not disconnected.
+
+### peerops
+
+Orchestrates one full peer lifecycle operation (add/disable/resume/revoke/rotate, spec
+§17) by composing `wgconfig` (parse the current config, build/locate a peer block),
+`transaction` (apply it), and local key generation — this is the layer `cli` and `tui`
+both call so the logic isn't duplicated between them. It never touches `profilevault`
+directly: `DisablePeer` returns the removed block's exact bytes and `AddPeer`/`RotatePeer`
+return the generated keys, and it's the caller's job to decide what to persist and where
+(SPEC.md §7.1's save/QR/clipboard/stdout choices are a `cli`/`tui` concern, not `peerops`'s).
 
 ### profilevault
 
