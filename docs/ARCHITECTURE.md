@@ -225,7 +225,7 @@ deliberately absent from both runtime and persistent config - still appears with
 own private key and only registers it if that key is actually found on the server, never
 fabricating a match.
 
-### Future extension: MCP server front-end (post-MVP, not started)
+### Future extension: MCP server front-end (post-MVP, not started, but important)
 
 Spec §3.1.5 already asks for a non-interactive interface "for automation and AI agents."
 A natural post-MVP addition is a third thin front end, `internal/mcpserver`, exposing the
@@ -233,6 +233,18 @@ same request/response API as `cli`/`tui` over MCP — so an external AI agent ca
 `wgtui` the same way a human drives the TUI: same validation, same plan-before-apply, same
 explicit-confirmation requirement for every mutation. It changes nothing about the trust
 model, because it is still the human confirming a shown plan.
+
+**Why this matters (not just a nice-to-have, per project owner):** without it, an AI agent
+that wants to help a user manage WireGuard peers has to shell out to the `cli` and parse
+text/JSON output cold, re-deriving `wgtui`'s whole command surface and safety model (plan-
+before-apply, the three-question revoke, secret redaction) from scratch every session with
+no guardrails of its own. An MCP front end turns `wgtui` into a backend two different
+callers share through the same validated layer - a human via `tui`, an agent via MCP - each
+getting the same guarantees (structured errors instead of scraped text, the same plan/
+confirm contract, no way to bypass it) rather than the agent needing to be independently
+trustworthy about respecting them. Deprioritized only because Stage 4's required checklist
+items came first, not because it's marginal - pick this up before/alongside Stage 5 if
+nothing else is more pressing.
 
 **Explicitly rejected:** `wgtui` calling out to an external AI service to make a decision
 *on behalf of* the user for an ambiguous or unresolved situation (e.g. an install choice,
