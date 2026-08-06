@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/discovery"
@@ -31,6 +32,19 @@ func runServer(args []string, stdout, stderr io.Writer) int {
 }
 
 func runServerAdd(args []string, stdout, stderr io.Writer) int {
+	// The server ID is a fixed leading positional argument, SPEC.md §21's
+	// own examples put it right after the subcommand and before every
+	// flag ("wgtui server add office --ssh-host ..."). It has to be
+	// peeled off *before* fs.Parse: the standard flag package stops
+	// parsing at the first non-flag token, so if the ID were left in
+	// front of fs.Parse's input it would swallow every flag after it as
+	// more positional arguments instead of recognizing them.
+	if len(args) < 1 {
+		fmt.Fprintln(stderr, "wgtui server add: expected the server ID as the first argument")
+		return 2
+	}
+	id := args[0]
+
 	fs := flag.NewFlagSet("server add", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	sshHost := fs.String("ssh-host", "", "SSH hostname, IP, or ~/.ssh/config alias (required)")
@@ -38,14 +52,13 @@ func runServerAdd(args []string, stdout, stderr io.Writer) int {
 	sshPort := fs.Int("ssh-port", 0, "SSH port (optional, defaults to ssh_config/22)")
 	sshIdentity := fs.String("ssh-identity", "", "path to an SSH private key (optional)")
 	displayName := fs.String("display-name", "", "human-readable name (defaults to the ID)")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
-	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "wgtui server add: expected exactly one positional argument, the server ID")
+	if fs.NArg() != 0 {
+		fmt.Fprintln(stderr, "wgtui server add: unexpected extra argument(s): "+strings.Join(fs.Args(), " "))
 		return 2
 	}
-	id := fs.Arg(0)
 	if *sshHost == "" {
 		fmt.Fprintln(stderr, "wgtui server add: --ssh-host is required")
 		return 2
@@ -100,17 +113,22 @@ type inspectionResult struct {
 }
 
 func runServerInspect(args []string, stdout, stderr io.Writer) int {
+	if len(args) < 1 {
+		fmt.Fprintln(stderr, "wgtui server inspect: expected the server ID as the first argument")
+		return 2
+	}
+	id := args[0]
+
 	fs := flag.NewFlagSet("server inspect", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "output structured JSON instead of text")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
-	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "wgtui server inspect: expected exactly one positional argument, the server ID")
+	if fs.NArg() != 0 {
+		fmt.Fprintln(stderr, "wgtui server inspect: unexpected extra argument(s): "+strings.Join(fs.Args(), " "))
 		return 2
 	}
-	id := fs.Arg(0)
 
 	v, _, err := openOrCreateVault(stdout)
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -40,17 +41,22 @@ type peerView struct {
 }
 
 func runPeerList(args []string, stdout, stderr io.Writer) int {
+	if len(args) < 1 {
+		fmt.Fprintln(stderr, "wgtui peer list: expected the server ID as the first argument")
+		return 2
+	}
+	id := args[0]
+
 	fs := flag.NewFlagSet("peer list", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	jsonOut := fs.Bool("json", false, "output structured JSON instead of text")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
-	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "wgtui peer list: expected exactly one positional argument, the server ID")
+	if fs.NArg() != 0 {
+		fmt.Fprintln(stderr, "wgtui peer list: unexpected extra argument(s): "+strings.Join(fs.Args(), " "))
 		return 2
 	}
-	id := fs.Arg(0)
 
 	v, _, err := openOrCreateVault(stdout)
 	if err != nil {

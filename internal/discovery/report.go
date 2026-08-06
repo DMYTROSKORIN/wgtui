@@ -16,6 +16,8 @@ type InterfaceDetail struct {
 	Active                   bool
 	ConfigExists             bool
 	SaveConfig               bool
+	RuntimeListenPort        int // 0 if unknown (interface not active, or dump line missing)
+	ConfigListenPort         int // 0 if unknown (no config file, or ListenPort unset)
 	RuntimePeerPublicKeys    []string
 	PersistentPeerPublicKeys []string
 	Drift                    bool // computed: runtime and persistent peer sets differ

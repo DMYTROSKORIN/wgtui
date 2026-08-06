@@ -99,6 +99,14 @@ func discoverWireGuard(ctx context.Context, client *sshtransport.Client, prompts
 		if perr != nil {
 			r.Errors = append(r.Errors, "parse wg show all dump: "+perr.Error())
 		} else {
+			for _, iface := range dump.Interfaces {
+				if !isValidInterfaceName(iface.Name) {
+					continue
+				}
+				d := r.WireGuard.Interfaces[iface.Name]
+				d.RuntimeListenPort = iface.ListenPort
+				r.WireGuard.Interfaces[iface.Name] = d
+			}
 			for _, p := range dump.Peers {
 				if !isValidInterfaceName(p.Interface) {
 					continue
@@ -147,6 +155,7 @@ func discoverWireGuard(ctx context.Context, client *sshtransport.Client, prompts
 		}
 		summary := wgconfig.Summarize(string(confRes.Stdout))
 		d.SaveConfig = summary.SaveConfig
+		d.ConfigListenPort = summary.ListenPort
 		d.PersistentPeerPublicKeys = summary.PeerPublicKeys
 		d.Drift = ComputeDrift(d.RuntimePeerPublicKeys, d.PersistentPeerPublicKeys)
 		r.WireGuard.Interfaces[name] = d

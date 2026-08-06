@@ -25,6 +25,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runServer(args[1:], stdout, stderr)
 	case "peer":
 		return runPeer(args[1:], stdout, stderr)
+	case "diagnose":
+		return runDiagnose(args[1:], stdout, stderr)
 	case "version", "--version":
 		fmt.Fprintln(stdout, "wgtui "+Version)
 		return 0
@@ -45,6 +47,7 @@ Usage:
   wgtui server add <id> --ssh-host <host> [--ssh-user <user>] [--ssh-port <port>] [--ssh-identity <path>] [--display-name <name>]
   wgtui server inspect <id> [--json]
   wgtui peer list <id> [--json]
+  wgtui diagnose <id> [--json]
   wgtui version
 
 Every command that reaches the network prompts interactively for the SSH
