@@ -37,6 +37,8 @@ func runPeer(args []string, stdout, stderr io.Writer) int {
 		return runPeerRotate(args[1:], stdout, stderr)
 	case "export":
 		return runPeerExport(args[1:], stdout, stderr)
+	case "import":
+		return runPeerImport(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "wgtui peer: unknown subcommand %q\n", args[0])
 		return 2

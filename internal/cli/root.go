@@ -57,6 +57,7 @@ Usage:
   wgtui peer revoke <id> <peer-name> [--delete-profile] [--delete-metadata] [--yes]
   wgtui peer rotate <id> <peer-name> [--yes]
   wgtui peer export <id> <peer-name> --output <path> [--force]
+  wgtui peer import <id> --file <path> --name <name> [--interface <if>]
   wgtui diagnose <id> [--json]
   wgtui version
 
