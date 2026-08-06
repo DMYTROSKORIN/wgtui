@@ -10,6 +10,7 @@ var goldenFixtures = []string{
 	"multi_peer_saveconfig.conf",
 	"crlf_lowercase_key.conf",
 	"unknown_fields.conf",
+	"no_trailing_newline.conf",
 }
 
 // TestDocument_RoundTrip is the golden-test backbone SPEC.md §26.2 asks

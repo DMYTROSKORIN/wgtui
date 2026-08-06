@@ -73,7 +73,20 @@ func buildScript(plan Plan) (string, error) {
 	b.WriteString(`BACKUP="$CONF.bak.$TS"` + "\n")
 	b.WriteString(`cp -p "$CONF" "$BACKUP"` + "\n")
 
-	b.WriteString(`TMP="$CONF.wgtui.tmp.$$"` + "\n")
+	// wg-quick derives the interface name from its argument's basename
+	// and requires it to be exactly "<name>.conf" (name matching its own
+	// IFNAMSIZ-shaped pattern) - "$CONF.wgtui.tmp.$$" fails that check
+	// even though its *content* would be perfectly valid, confirmed
+	// against nas.paynet.one:2626 ("wg-quick: The config file must be a
+	// valid interface name, followed by .conf"). A same-filesystem
+	// subdirectory lets the temp file keep the real "$IFACE.conf" name
+	// for wg-quick's benefit while never colliding with the real path.
+	// No per-process suffix is needed: the mkdir lock above already
+	// guarantees only one wgtui transaction runs against this interface
+	// at a time.
+	b.WriteString(`TMPDIR="$(dirname "$CONF")/.wgtui-tmp"` + "\n")
+	b.WriteString(`mkdir -p "$TMPDIR"` + "\n")
+	b.WriteString(`TMP="$TMPDIR/$IFACE.conf"` + "\n")
 	fmt.Fprintf(&b, "cat > \"$TMP\" <<'%s'\n", delim)
 	b.WriteString(plan.NewContent)
 	if !strings.HasSuffix(plan.NewContent, "\n") {

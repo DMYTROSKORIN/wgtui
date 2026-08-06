@@ -149,7 +149,7 @@ func (c *Client) SudoValidate(ctx context.Context, prompts Prompts) error {
 func (c *Client) RunSudo(ctx context.Context, remoteCmd string, prompts Prompts) (Result, error) {
 	args := append(c.baseArgs(), "-tt", c.target.HostOrAlias, "sudo "+remoteCmd)
 	out, err := c.runInteractive(ctx, args, prompts)
-	res := Result{Stdout: out}
+	res := Result{Stdout: normalizePTYCapture(out)}
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		res.ExitCode = exitErr.ExitCode()
 		return res, nil
@@ -175,12 +175,38 @@ func (c *Client) RunSudoScript(ctx context.Context, script string, prompts Promp
 	remoteCmd := "echo " + encoded + " | base64 -d | sudo bash"
 	args := append(c.baseArgs(), "-tt", c.target.HostOrAlias, remoteCmd)
 	out, err := c.runInteractive(ctx, args, prompts)
-	res := Result{Stdout: out}
+	res := Result{Stdout: normalizePTYCapture(out)}
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		res.ExitCode = exitErr.ExitCode()
 		return res, nil
 	}
 	return res, err
+}
+
+// normalizePTYCapture undoes two artifacts introduced by driving a
+// command through a local PTY rather than a plain pipe (confirmed against
+// nas.paynet.one:2626 by comparing a captured `cat` of a config file
+// against `sha256sum` run on the same file directly: the two never
+// matched until this was added):
+//
+//  1. The pty's line discipline runs in cooked mode by default, which
+//     applies ONLCR translation (outgoing "\n" becomes "\r\n") - so
+//     captured multi-line output has different bytes than the real file,
+//     even though it reads identically.
+//  2. After a successful sudo password prompt, one stray "space + CRLF"
+//     line lands at the very start of the real command's output - this
+//     matches sudo's own end-of-password-entry line-clearing behavior,
+//     not anything the command itself printed.
+//
+// This matters because RunSudo/RunSudoScript are used to fetch config
+// text whose exact bytes get hashed (transaction.Fingerprint) and later
+// reproduced verbatim in a new config - a corrupted capture would never
+// match the server's own sha256sum, and SPEC.md §15.2's TOCTOU check
+// would fail every single time, not just on an actual concurrent edit.
+func normalizePTYCapture(out []byte) []byte {
+	s := strings.TrimLeft(string(out), " \t\r\n")
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return []byte(s)
 }
 
 // runInteractive spawns ssh under a local PTY, scans its output for a
@@ -217,7 +243,7 @@ func (c *Client) runInteractive(ctx context.Context, args []string, prompts Prom
 			if isTimeoutErr(rerr) {
 				select {
 				case werr := <-done:
-					return []byte(full.String()[outputStart:]), classifyExit(werr)
+					return []byte(full.String()[outputStart:]), werr
 				default:
 					continue
 				}
@@ -225,7 +251,7 @@ func (c *Client) runInteractive(ctx context.Context, args []string, prompts Prom
 			// EOF (or another read error) from the pty: the remote side
 			// almost certainly closed because the process exited.
 			werr := <-done
-			return []byte(full.String()[outputStart:]), classifyExit(werr)
+			return []byte(full.String()[outputStart:]), werr
 		}
 		lineBuf.WriteByte(b)
 		full.WriteByte(b)
@@ -285,14 +311,4 @@ func isTimeoutErr(err error) bool {
 	type timeout interface{ Timeout() bool }
 	te, ok := err.(timeout)
 	return ok && te.Timeout()
-}
-
-func classifyExit(err error) error {
-	if err == nil {
-		return nil
-	}
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		return fmt.Errorf("ssh exited with %s", exitErr.String())
-	}
-	return err
 }

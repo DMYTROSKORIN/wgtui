@@ -117,6 +117,24 @@ step anyway — see sshtransport's `RunSudo` doc comment for the same reasoning 
 sudo's own cache). Live apply is `wg syncconf` fed by `wg-quick strip`, so unrelated peers
 are not disconnected.
 
+**Stage 2 findings (empirically confirmed against the project's test server):**
+
+- Driving a command through a local PTY (`-tt`, needed for the sudo password prompt)
+  introduces two byte-level artifacts that don't affect line-oriented parsing but do
+  break anything that needs an *exact* copy of remote content: cooked-mode ONLCR
+  translation turns every `\n` into `\r\n`, and a stray "space + CRLF" line lands at the
+  very start of the real output right after a successful password prompt (matches sudo's
+  own line-clearing behavior). `transaction.Fingerprint` hashes the config exactly as
+  read, so an uncorrected capture never matched the server's own `sha256sum` - the TOCTOU
+  guard failed on *every* run, not just a real concurrent edit. Fixed by
+  `sshtransport.normalizePTYCapture`, applied to `RunSudo`/`RunSudoScript` output.
+- `wg-quick strip <path>` derives the interface name from the path's basename and
+  requires it to be exactly `<name>.conf` - a temp file named `wg0.conf.wgtui.tmp.$$`
+  fails that check outright even though its content is valid. Fixed by writing the temp
+  file into a same-filesystem subdirectory (`.wgtui-tmp/`) under the real name
+  (`$IFACE.conf`), which also needs no per-process suffix since the mkdir lock already
+  serializes access to one transaction per interface at a time.
+
 ### peerops
 
 Orchestrates one full peer lifecycle operation (add/disable/resume/revoke/rotate, spec
