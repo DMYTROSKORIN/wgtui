@@ -58,3 +58,19 @@ func TestParseListeningUDPPorts(t *testing.T) {
 		t.Errorf("parseListeningUDPPorts() = %v, want %v", got, want)
 	}
 }
+
+// TestParseListeningUDPPorts_NoNetidColumn locks in a real-world format
+// difference found running against nas.paynet.one:2626: this system's `ss
+// -lun` prints no leading "Netid" column at all, which broke a
+// fixed-column-index parser.
+func TestParseListeningUDPPorts_NoNetidColumn(t *testing.T) {
+	out := "State  Recv-Q Send-Q        Local Address:Port  Peer Address:PortProcess\n" +
+		"UNCONN 0      0                   0.0.0.0:1900       0.0.0.0:*          \n" +
+		"UNCONN 0      0                   0.0.0.0:51820      0.0.0.0:*          \n" +
+		"UNCONN 0      0             127.0.0.53%lo:53         0.0.0.0:*          \n"
+	got := parseListeningUDPPorts(out)
+	want := []int{1900, 51820, 53}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("parseListeningUDPPorts() = %v, want %v", got, want)
+	}
+}

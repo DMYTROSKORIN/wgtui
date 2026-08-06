@@ -112,7 +112,14 @@ func discoverWireGuard(ctx context.Context, client *sshtransport.Client, prompts
 		r.Errors = append(r.Errors, checkErr("wg show all dump", res, err))
 	}
 
-	if res, err := client.RunSudo(ctx, "ls -1 /etc/wireguard/*.conf 2>/dev/null", prompts); err == nil {
+	// The glob must expand as root, not as the login user: /etc/wireguard
+	// is normally 0700 root-owned, so an unprivileged shell can't even
+	// see there's anything to match and passes the literal "*.conf"
+	// through - `ls` then fails with "No such file or directory" even
+	// though the file exists (confirmed against nas.paynet.one:2626).
+	// Wrapping the glob in `sudo sh -c '...'` makes the expansion happen
+	// inside the root-owned shell sudo starts.
+	if res, err := client.RunSudo(ctx, `sh -c 'ls -1 /etc/wireguard/*.conf 2>/dev/null'`, prompts); err == nil {
 		for _, line := range strings.Split(string(res.Stdout), "\n") {
 			line = strings.TrimSpace(line)
 			if !strings.HasSuffix(line, ".conf") {

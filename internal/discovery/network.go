@@ -41,29 +41,30 @@ func parseDefaultRouteInterface(out string) string {
 	return ""
 }
 
-// parseListeningUDPPorts parses `ss -lun` output. It is tolerant of the
-// header line being present or absent and only trusts fields that parse
-// as a plain integer port.
+// parseListeningUDPPorts parses `ss -lun` output. The column layout is not
+// trusted by fixed index - some systems print a leading "Netid" column,
+// some don't (confirmed different from the textbook layout against
+// nas.paynet.one:2626) - so this takes the *first* field on the line that
+// looks like "address:port", which is always the Local Address:Port
+// column regardless of how many columns come before it.
 func parseListeningUDPPorts(out string) []int {
 	var ports []int
 	seen := make(map[int]bool)
 	for _, line := range strings.Split(out, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 5 {
-			continue
-		}
-		local := fields[4]
-		idx := strings.LastIndex(local, ":")
-		if idx == -1 {
-			continue
-		}
-		port, err := strconv.Atoi(local[idx+1:])
-		if err != nil {
-			continue
-		}
-		if !seen[port] {
-			seen[port] = true
-			ports = append(ports, port)
+		for _, field := range strings.Fields(line) {
+			idx := strings.LastIndex(field, ":")
+			if idx == -1 {
+				continue
+			}
+			port, err := strconv.Atoi(field[idx+1:])
+			if err != nil {
+				continue
+			}
+			if !seen[port] {
+				seen[port] = true
+				ports = append(ports, port)
+			}
+			break // stop at the first field whose suffix after ':' is a real port number - that's always Local Address:Port, whatever column it lands in
 		}
 	}
 	return ports
