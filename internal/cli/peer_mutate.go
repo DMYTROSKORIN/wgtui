@@ -562,13 +562,15 @@ func runPeerRotate(args []string, stdout, stderr io.Writer) int {
 
 	v.DeleteProfile(serverID, meta.PublicKey)
 	v.SetProfile(serverID, result.KeyPair.PublicKey, newConf)
+	// The metadata entry is keyed by (ServerID, PublicKey), so a rotation
+	// can't be expressed as an UpdatePeer - that looks up the row by the
+	// very key that's changing, finds nothing, and (if callers aren't
+	// careful) leaves the old row behind as an orphan pointing at a
+	// public key that no longer exists on the server. Explicitly remove
+	// the old row, then add the new one.
+	v.RemovePeer(serverID, meta.PublicKey)
 	meta.PublicKey = result.KeyPair.PublicKey
-	v.UpdatePeer(meta)
-	// UpdatePeer matches by the *new* public key, which isn't registered
-	// yet under the old entry's identity - re-add if the match failed.
-	if _, ok := v.GetPeerByPublicKey(serverID, result.KeyPair.PublicKey); !ok {
-		_ = v.AddPeer(meta)
-	}
+	_ = v.AddPeer(meta)
 
 	if err := v.Save(vaultPath); err != nil {
 		fmt.Fprintf(stderr, "wgtui peer rotate: applied on the server (backup: %s), but saving the local vault failed: %v\n", result.Outcome.BackupPath, err)

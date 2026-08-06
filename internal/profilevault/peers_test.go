@@ -55,6 +55,44 @@ func TestVault_PeerLifecycle(t *testing.T) {
 	}
 }
 
+// TestVault_RotateMetadataSequence locks in the correct sequence for a
+// key rotation: PeerMetadata is keyed by (ServerID, PublicKey), so
+// UpdatePeer cannot express "this row's key is changing" - it looks up
+// the row by the very key that's about to change, finds nothing, and a
+// caller that isn't careful (cli's runPeerRotate did this once) can leave
+// the old row behind as an orphan pointing at a public key that no longer
+// exists on the server. The correct sequence is RemovePeer(old) then
+// AddPeer(new).
+func TestVault_RotateMetadataSequence(t *testing.T) {
+	v, _ := New("pw")
+	orig := PeerMetadata{ServerID: "s1", Name: "Alex", PublicKey: "old-key", CreatedAt: time.Now(), Status: PeerStatusActive}
+	if err := v.AddPeer(orig); err != nil {
+		t.Fatalf("AddPeer: %v", err)
+	}
+
+	// The fixed rotation sequence.
+	v.RemovePeer("s1", orig.PublicKey)
+	rotated := orig
+	rotated.PublicKey = "new-key"
+	if err := v.AddPeer(rotated); err != nil {
+		t.Fatalf("AddPeer after rotate: %v", err)
+	}
+
+	peers := v.ListPeers("s1")
+	if len(peers) != 1 {
+		t.Fatalf("ListPeers = %+v, want exactly 1 entry after rotation (found a leftover orphan)", peers)
+	}
+	if peers[0].PublicKey != "new-key" {
+		t.Errorf("surviving entry has PublicKey %q, want new-key", peers[0].PublicKey)
+	}
+	if _, ok := v.GetPeerByPublicKey("s1", "old-key"); ok {
+		t.Error("old-key still resolvable after rotation - orphaned row")
+	}
+	if got, ok := v.GetPeerByName("s1", "Alex"); !ok || got.PublicKey != "new-key" {
+		t.Errorf("GetPeerByName(Alex) = %+v, ok=%v, want the rotated (new-key) entry", got, ok)
+	}
+}
+
 func TestVault_ProfileStorage(t *testing.T) {
 	v, _ := New("pw")
 	const conf = "[Interface]\nPrivateKey = super-secret-private-key\n"
