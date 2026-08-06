@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/discovery"
+	"github.com/DMYTROSKORIN/wgtui/internal/profilevault"
 )
 
 // checkStatus is deliberately a small closed set, not a free-form string:
@@ -81,7 +83,7 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 	}
 	diag := diagnoseResult{
 		State:       result.State,
-		Checks:      buildChecks(result.Report),
+		Checks:      buildChecks(result.Report, v.ListPeers(server.ID), time.Now()),
 		Limitations: diagnoseLimitations,
 	}
 
@@ -98,16 +100,25 @@ func runDiagnose(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// recommendedKeyRotationAge is a soft, informational threshold only -
+// SPEC.md §30.9 explicitly declined any peer-expiration *enforcement* in
+// MVP. This never disables anything; it only surfaces a "consider
+// rotating" hint in `diagnose`, the same way a password manager might
+// flag an old credential without locking the account.
+const recommendedKeyRotationAge = 180 * 24 * time.Hour
+
 // buildChecks derives SPEC.md §22 checks from data discovery.Discover
-// already collected. Explicitly not implemented in Stage 1 (read-only
-// inspector): NAT/MASQUERADE rule presence, overlapping AllowedIPs,
-// duplicate client VPN IPs, endpoint DNS resolution, the external-port UDP
-// heuristic, backup health, config file permissions, and local
-// profile/key mismatches - most of these need either a local profile
-// registry (Stage 2) or firewall rule parsing (Stage 3/4) that doesn't
-// exist yet. `wgtui diagnose --json` output is meant to grow these checks
-// over time without changing the shape of the ones already here.
-func buildChecks(r discovery.Report) []checkResult {
+// already collected, plus a key-age advisory (Stage 4) from the local
+// peer metadata registry (localPeers is nil-safe: an empty/unavailable
+// registry just means no key-age checks are produced, not an error).
+// Explicitly not implemented: NAT/MASQUERADE rule presence, overlapping
+// AllowedIPs, duplicate client VPN IPs, endpoint DNS resolution, the
+// external-port UDP heuristic, backup health, config file permissions,
+// and local profile/key mismatches - most of these need firewall rule
+// parsing that doesn't exist yet. `wgtui diagnose --json` output is meant
+// to grow these checks over time without changing the shape of the ones
+// already here.
+func buildChecks(r discovery.Report, localPeers []profilevault.PeerMetadata, now time.Time) []checkResult {
 	var checks []checkResult
 
 	checks = append(checks, checkResult{Name: "ssh_reachable", Status: checkPass, Detail: "connected"})
@@ -154,6 +165,20 @@ func buildChecks(r discovery.Report) []checkResult {
 
 	for _, e := range r.Errors {
 		checks = append(checks, checkResult{Name: "discovery_check", Status: checkWarn, Detail: e})
+	}
+
+	for _, p := range localPeers {
+		if p.Status != profilevault.PeerStatusActive || p.CreatedAt.IsZero() {
+			continue
+		}
+		age := now.Sub(p.CreatedAt)
+		if age > recommendedKeyRotationAge {
+			checks = append(checks, checkResult{
+				Name:   "peer_key_age:" + p.Name,
+				Status: checkWarn,
+				Detail: fmt.Sprintf("key is %d days old - consider `wgtui peer rotate` (informational only, not enforced)", int(age.Hours()/24)),
+			})
+		}
 	}
 
 	return checks
