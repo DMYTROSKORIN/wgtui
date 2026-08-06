@@ -58,10 +58,21 @@ Responsibilities:
 - `ssh -G <alias>` resolution to preview host/user/port without leaking secrets (spec §10.1).
 - Host key verification: strict by default, fingerprint prompt on first connect, hard stop
   on mismatch (spec §10.2). Never sets `StrictHostKeyChecking=no`.
-- Running remote commands and short scripts over a single session/ControlMaster.
-- Interactive password and `sudo -v` / `sudo -n` handling through a PTY, with the password
-  held only in process memory for the session lifetime (spec §10.3).
+- Running remote commands over a single ControlMaster connection.
+- Interactive password and `sudo` handling through a PTY, with the password held only in
+  process memory for the session lifetime (spec §10.3).
 - No secret ever appears as a process argument or in an environment variable.
+
+**Stage 0 finding (empirically confirmed against the project's test server):** spec §10.3's
+"`sudo -v` once, then `sudo -n` within the current session" does not hold across separate
+`ssh` invocations. `sudo`'s per-tty credential cache (`tty_tickets`, the default on modern
+distros) is keyed to the exact pty device the validating `sudo -v` ran on; a later `ssh`
+call made without `-tt` allocates no remote pty at all and misses that cache key, so
+`sudo -n` is refused again seconds later even though `sudo -v` just succeeded. `RunSudo`
+therefore re-authenticates through its own `-tt` channel on every privileged call instead
+of depending on a cross-process cache; `SudoValidate` remains useful only as an early
+fail-fast check that the supplied password is correct. See `internal/sshtransport/client.go`
+doc comments for the mechanism.
 
 ### osadapter
 
