@@ -111,6 +111,25 @@ Both are thin front ends over one shared, structured request/response API (spec 
 behavior cannot drift between the two. Command surface for `cli` is spec §21; screens for
 `tui` are spec §20.
 
+### Future extension: MCP server front-end (post-MVP, not started)
+
+Spec §3.1.5 already asks for a non-interactive interface "for automation and AI agents."
+A natural post-MVP addition is a third thin front end, `internal/mcpserver`, exposing the
+same request/response API as `cli`/`tui` over MCP — so an external AI agent can drive
+`wgtui` the same way a human drives the TUI: same validation, same plan-before-apply, same
+explicit-confirmation requirement for every mutation. It changes nothing about the trust
+model, because it is still the human confirming a shown plan.
+
+**Explicitly rejected:** `wgtui` calling out to an external AI service to make a decision
+*on behalf of* the user for an ambiguous or unresolved situation (e.g. an install choice,
+a conflicting discovery state, whether to proceed after drift). That would be a hidden
+cloud control plane (excluded by spec §3.2), would send server/network details to a third
+party, opens a prompt-injection path through attacker-influenced remote content (see
+`docs/THREAT_MODEL.md` T8), and replaces the explicit human confirmation that every
+mutating operation currently depends on for safety (§13.5, §20.4). If this is ever
+reconsidered, it must stay strictly read-only/advisory and never be allowed to approve a
+mutation by itself.
+
 ## Data flow for a mutating operation (e.g. peer add)
 
 1. `cli`/`tui` builds a request from user input.
