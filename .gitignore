@@ -1,0 +1,11 @@
+/bin/
+/dist/
+*.test
+*.out
+.DS_Store
+
+# Never allow local secrets, vault contents or captured test fixtures with
+# real credentials to be committed by accident.
+*.env
+*password*
+*secret*
