@@ -105,10 +105,17 @@ Per-distribution adapters (Ubuntu/Debian/Fedora in MVP) for:
 
 - OS/package manager detection from `/etc/os-release`.
 - WireGuard package installation (spec §12).
-- Service management via systemd (`wg-quick@<iface>`).
+- Service management via systemd (`wg-quick@<iface>`) or OpenRC (Stage 4,
+  `DetectServiceManager` dispatches independently of distro/package manager - untested
+  against a real OpenRC target, since no MVP distro uses it; exists so a future
+  non-systemd distro doesn't need a new abstraction layer).
 - Firewall/NAT backend detection and rule adapters: nftables, iptables, UFW, firewalld
   (spec §13.5). Every mutating call returns a **plan** (exact commands) first; nothing
-  executes without explicit confirmation from the caller.
+  executes without explicit confirmation from the caller. `IsPortOpen` (Stage 4) reads
+  each backend's current status first, so re-running the setup wizard against an
+  already-configured server is a no-op instead of piling up duplicate `nft`/`iptables`
+  rules (those two aren't natively idempotent the way `ufw allow`/`firewall-cmd
+  --add-port` already are).
 
 Unsupported distributions get a read-only report, never a guessed mutation (spec §29.6).
 
@@ -182,6 +189,14 @@ directly: `DisablePeer` returns the removed block's exact bytes and `AddPeer`/`R
 return the generated keys, and it's the caller's job to decide what to persist and where
 (SPEC.md §7.1's save/QR/clipboard/stdout choices are a `cli`/`tui` concern, not `peerops`'s).
 
+**Stage 4: multi-interface.** `PeerMetadata.Interface` (set at `peer add` time, carried
+through disable/enable/revoke/rotate) is what actually makes a multi-interface server
+usable from the CLI: `peerops.ResolveInterface`'s "exactly one active interface, or tell
+me which" fallback is the *only* thing available otherwise, and a peer-targeted command
+can't ask the user an interactive question mid-flow the way a fresh `peer add` can - it
+needs to already know. `cli`'s peer commands also gained an `--interface` override for
+metadata created before this field existed.
+
 ### profilevault
 
 Local encrypted storage for generated client `.conf` profiles and the peer metadata
@@ -199,6 +214,16 @@ one of the seven discovery states (spec §11.4). Never mutates.
 Both are thin front ends over one shared, structured request/response API (spec §29.4) so
 behavior cannot drift between the two. Command surface for `cli` is spec §21; screens for
 `tui` are spec §20.
+
+**Stage 4: reconciliation.** `peer list` merges the runtime `wg show all dump` result with
+the local metadata registry (`reconcilePeers`, pure/network-free): a peer wgtui knows about
+shows its real name and `managed_by_wgtui: true`; anything else is "unmanaged" (spec
+§16.1's own description of how an unknown peer should render). A peer wgtui disabled -
+deliberately absent from both runtime and persistent config - still appears with state
+`disabled` rather than vanishing just because it isn't on the wire. `peer import` (spec
+§17.7) is the write-side counterpart: derives a public key from an existing local `.conf`'s
+own private key and only registers it if that key is actually found on the server, never
+fabricating a match.
 
 ### Future extension: MCP server front-end (post-MVP, not started)
 
