@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,45 +42,88 @@ func TestPeerDashboardShowsReadableTrafficAndSelectedCard(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 36})
 	m.rebuildPeerTable()
 	view := m.View()
-	for _, want := range []string{"Alice", "10.10.0.2/32", "2.0 MiB", "512.0 KiB", "Selected peer", "stored securely"} {
+	for _, want := range []string{"Alice", "10.10.0.2/32", "2.0M", "512.0K", "Selected peer", "stored securely"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("peer dashboard does not contain %q:\n%s", want, view)
 		}
 	}
 }
 
-func TestWidePeerDashboardUsesThreePanelsAndRuntimeDetails(t *testing.T) {
+func TestWidePeerDashboardUsesListAndInspectorWithoutServerSidebar(t *testing.T) {
 	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office", SSHHostOrAlias: "vpn.example.test"})
 	m.screen, m.tab = screenServerDetail, tabPeers
 	m.selected = domain.Server{ID: "office", DisplayName: "Office", SSHHostOrAlias: "vpn.example.test"}
+	m.detailSession = &session{cleanup: func() {}}
 	m.peersLoaded = true
 	m.peers = []peerview.Peer{{
-		Name: "Alice", Interface: "wg0", VPNIP: "10.10.0.2/32", PublicKey: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH",
+		Name: "Alice Workstation With A Useful Name", Interface: "wg0", VPNIP: "10.10.0.2/32", PublicKey: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH",
 		Endpoint: "198.51.100.7:51820", PresharedKeyPresent: true, State: "online", Managed: true, ProfileAvailable: true,
 	}}
-	m.Update(tea.WindowSizeMsg{Width: 210, Height: 34})
+	m.Update(tea.WindowSizeMsg{Width: 166, Height: 34})
 	m.rebuildPeerTable()
 	view := m.View()
-	for _, want := range []string{"Servers", "Peers", "Selected peer", "Endpoint", "198.51.100.7:51820", "secret hidden", "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH"} {
+	for _, want := range []string{"Peers", "Selected peer", "Alice Workstation With A Useful Name", "Endpoint", "198.51.100.7:51820", "secret hidden", "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH", "connected"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("wide dashboard does not contain %q:\n%s", want, view)
 		}
 	}
-	servers, peers, inspector := widePeerPanelWidths(210)
-	if servers+peers+inspector+8 != 210 {
-		t.Fatalf("wide panel widths consume %d cells, want 210", servers+peers+inspector+8)
+	if strings.Contains(view, "│ Servers") {
+		t.Fatalf("internal dashboard still renders the redundant Servers sidebar:\n%s", view)
 	}
-	if len(m.peerTable.Columns()) != 6 {
-		t.Fatalf("wide peer table has %d columns, want 6", len(m.peerTable.Columns()))
+	peers, inspector := peerSplitPanelWidths(166)
+	if peers+inspector+5 != 166 {
+		t.Fatalf("split panel widths consume %d cells, want 166", peers+inspector+5)
 	}
+	if got := m.peerTable.Columns()[0].Width; got < 45 {
+		t.Fatalf("Peer column width = %d, want at least 45 at screenshot-like width", got)
+	}
+	assertViewFits(t, view, 166, 34)
+}
+
+func TestPeerDashboardAdaptsWithoutWrappedCells(t *testing.T) {
+	wantColumns := map[int]int{78: 3, 120: 6, 166: 4, 240: 7}
+	for width, columnCount := range wantColumns {
+		t.Run(fmt.Sprintf("width_%d", width), func(t *testing.T) {
+			m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
+			m.screen, m.tab = screenServerDetail, tabPeers
+			m.selected = domain.Server{ID: "office", DisplayName: "Office"}
+			m.peersLoaded = true
+			m.peers = []peerview.Peer{{
+				Name: "A very long descriptive workstation peer name used to verify that rows can never wrap", Interface: "wg0", VPNIP: "10.10.0.222/32",
+				PublicKey: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH", Endpoint: "198.51.100.200:56806",
+				State: "never_connected", RxBytes: 31 * 1024 * 1024, TxBytes: 124 * 1024 * 1024, Managed: true,
+			}}
+			m.Update(tea.WindowSizeMsg{Width: width, Height: 34})
+			m.rebuildPeerTable()
+			view := m.View()
+			if len(m.peerTable.Columns()) != columnCount {
+				t.Fatalf("columns = %d, want %d", len(m.peerTable.Columns()), columnCount)
+			}
+			for rowIndex, row := range m.peerTable.Rows() {
+				for columnIndex, cell := range row {
+					if got, limit := lipgloss.Width(cell), m.peerTable.Columns()[columnIndex].Width; got > limit {
+						t.Fatalf("row %d column %d is %d cells, limit %d: %q", rowIndex, columnIndex, got, limit, cell)
+					}
+				}
+			}
+			assertViewFits(t, view, width, 34)
+			if strings.Contains(view, "│ Servers") {
+				t.Fatal("internal dashboard rendered Servers sidebar")
+			}
+		})
+	}
+}
+
+func assertViewFits(t *testing.T, view string, width, height int) {
+	t.Helper()
 	lines := strings.Split(view, "\n")
 	for i, line := range lines {
-		if width := lipgloss.Width(line); width > 210 {
-			t.Fatalf("wide dashboard line %d is %d cells wide, terminal is 210:\n%s", i+1, width, line)
+		if renderedWidth := lipgloss.Width(line); renderedWidth > width {
+			t.Fatalf("dashboard line %d is %d cells wide, terminal is %d:\n%s", i+1, renderedWidth, width, line)
 		}
 	}
-	if len(lines) > 34 {
-		t.Fatalf("wide dashboard is %d lines tall, terminal is 34", len(lines))
+	if len(lines) > height {
+		t.Fatalf("dashboard is %d lines tall, terminal is %d", len(lines), height)
 	}
 }
 
@@ -170,7 +214,16 @@ func TestSafeProfileFilename(t *testing.T) {
 	}
 }
 
-func TestExportPeerCreatesSecretFileAndNeverOverwrites(t *testing.T) {
+func TestExportFormDefaultsToNamedWireGuardBundle(t *testing.T) {
+	m := testModel(t)
+	m.selectedPeer = peerview.Peer{Name: "Dima Office"}
+	m.startExportForm()
+	if m.exportPath != "Dima_Office_WireGuard" {
+		t.Fatalf("exportPath = %q, want Dima_Office_WireGuard", m.exportPath)
+	}
+}
+
+func TestExportPeerCreatesSecretBundleAndNeverOverwrites(t *testing.T) {
 	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
 	m.selected = domain.Server{ID: "office", DisplayName: "Office"}
 	m.selectedPeer = peerview.Peer{Name: "Alice", PublicKey: "alice-key"}
@@ -178,21 +231,37 @@ func TestExportPeerCreatesSecretFileAndNeverOverwrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.vault.SetProfile("office", "alice-key", "secret-profile")
-	path := filepath.Join(t.TempDir(), "Alice.conf")
-	m.exportPeer(path)
-	info, err := os.Stat(path)
+	dirPath := filepath.Join(t.TempDir(), "Alice_WireGuard")
+	m.exportPeerBundle(dirPath)
+	dirInfo, err := os.Stat(dirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("export mode = %o, want 600", info.Mode().Perm())
+	if dirInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("bundle directory mode = %o, want 700", dirInfo.Mode().Perm())
 	}
-	if err := os.WriteFile(path, []byte("do-not-replace"), 0o600); err != nil {
-		t.Fatal(err)
+	configPath := filepath.Join(dirPath, "Alice.conf")
+	qrPath := filepath.Join(dirPath, "Alice_QR.png")
+	for _, path := range []string{configPath, qrPath} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("%s mode = %o, want 600", path, info.Mode().Perm())
+		}
 	}
-	m.exportPeer(path)
-	raw, err := os.ReadFile(path)
-	if err != nil || string(raw) != "do-not-replace" {
-		t.Fatalf("existing export was changed: %q, err=%v", raw, err)
+	config, err := os.ReadFile(configPath)
+	if err != nil || string(config) != "secret-profile" {
+		t.Fatalf("config = %q, err=%v", config, err)
+	}
+	png, err := os.ReadFile(qrPath)
+	if err != nil || len(png) < 8 || string(png[:8]) != "\x89PNG\r\n\x1a\n" {
+		t.Fatalf("QR export is not a PNG, len=%d, err=%v", len(png), err)
+	}
+	m.clearStatus()
+	m.exportPeerBundle(dirPath)
+	if !m.statusErr || !strings.Contains(m.statusMsg, "already exists") {
+		t.Fatalf("second export should refuse existing bundle, status=%q", m.statusMsg)
 	}
 }

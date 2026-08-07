@@ -96,7 +96,9 @@ func peerStateBadge(state string) string {
 		return badge(warningStyle, "●", state)
 	case "drifted", "error":
 		return badge(dangerStyle, "●", state)
-	case "idle", "never_connected", "unmanaged":
+	case "never_connected":
+		return badge(dimStyle, "○", "never")
+	case "idle", "unmanaged":
 		return badge(dimStyle, "○", state)
 	default:
 		return badge(dimStyle, "○", state)

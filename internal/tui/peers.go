@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/domain"
 	"github.com/DMYTROSKORIN/wgtui/internal/peerops"
@@ -23,48 +24,66 @@ import (
 
 func (m *model) rebuildPeerTable() {
 	available := m.peerTableAvailableWidth()
-	wideColumns := available >= 95
 	var cols []table.Column
-	if wideColumns {
-		budget := available - 6
-		nameWidth := max(14, budget*16/100)
-		vpnWidth := max(14, budget*15/100)
-		stateWidth := max(12, budget*13/100)
-		seenWidth := max(12, budget*14/100)
-		endpointWidth := max(18, budget*22/100)
-		trafficWidth := max(19, budget-nameWidth-vpnWidth-stateWidth-seenWidth-endpointWidth)
+	mode := "compact"
+	switch {
+	case available >= 145:
+		mode = "extended"
+		nameWidth := max(24, available-97)
 		cols = []table.Column{
-			{Title: "Peer", Width: nameWidth},
-			{Title: "VPN IP", Width: vpnWidth},
-			{Title: "State", Width: stateWidth},
-			{Title: "Last seen", Width: seenWidth},
-			{Title: "Endpoint", Width: endpointWidth},
-			{Title: "Traffic ↓ / ↑", Width: trafficWidth},
+			{Title: "Peer / alias", Width: nameWidth},
+			{Title: "VPN IP", Width: 16},
+			{Title: "State", Width: 12},
+			{Title: "Last seen", Width: 14},
+			{Title: "Endpoint", Width: 27},
+			{Title: "RX", Width: 10},
+			{Title: "TX", Width: 10},
 		}
-	} else {
-		budget := max(60, available-5)
-		nameWidth := max(12, budget*19/100)
-		vpnWidth := max(14, budget*20/100)
-		stateWidth := max(12, budget*17/100)
-		seenWidth := max(12, budget*16/100)
-		trafficWidth := max(19, budget-nameWidth-vpnWidth-stateWidth-seenWidth)
+	case available >= 108:
+		mode = "traffic"
+		nameWidth := max(24, available-69)
 		cols = []table.Column{
-			{Title: "Peer", Width: nameWidth},
-			{Title: "VPN IP", Width: vpnWidth},
-			{Title: "State", Width: stateWidth},
-			{Title: "Last seen", Width: seenWidth},
-			{Title: "Traffic ↓ / ↑", Width: trafficWidth},
+			{Title: "Peer / alias", Width: nameWidth},
+			{Title: "VPN IP", Width: 16},
+			{Title: "State", Width: 12},
+			{Title: "Last seen", Width: 14},
+			{Title: "RX", Width: 10},
+			{Title: "TX", Width: 10},
+		}
+	case available >= 78:
+		mode = "standard"
+		nameWidth := max(24, available-47)
+		cols = []table.Column{
+			{Title: "Peer / alias", Width: nameWidth},
+			{Title: "VPN IP", Width: 16},
+			{Title: "State", Width: 12},
+			{Title: "Last seen", Width: 14},
+		}
+	default:
+		nameWidth := max(18, available-30)
+		cols = []table.Column{
+			{Title: "Peer / alias", Width: nameWidth},
+			{Title: "State", Width: 12},
+			{Title: "Last seen", Width: 14},
 		}
 	}
 	rows := make([]table.Row, 0, len(m.peers))
 	for _, p := range m.peers {
-		row := table.Row{
-			terminalText(p.Name), orDefault(terminalText(p.VPNIP), "-"), stateLabel(p), formatHandshakeAge(p.LatestHandshakeSeconds),
+		values := []string{peerTableLabel(p)}
+		if mode != "compact" {
+			values = append(values, orDefault(terminalText(p.VPNIP), "-"))
 		}
-		if wideColumns {
-			row = append(row, orDefault(terminalText(p.Endpoint), "-"))
+		values = append(values, stateLabel(p), formatHandshakeAge(p.LatestHandshakeSeconds))
+		if mode == "extended" {
+			values = append(values, orDefault(terminalText(p.Endpoint), "-"))
 		}
-		row = append(row, fmt.Sprintf("%s / %s", formatBytes(p.RxBytes), formatBytes(p.TxBytes)))
+		if mode == "traffic" || mode == "extended" {
+			values = append(values, formatBytesCompact(p.RxBytes), formatBytesCompact(p.TxBytes))
+		}
+		row := make(table.Row, len(values))
+		for i, value := range values {
+			row[i] = truncateCell(value, cols[i].Width)
+		}
 		rows = append(rows, row)
 	}
 
@@ -73,7 +92,7 @@ func (m *model) rebuildPeerTable() {
 	styles.Selected = styles.Selected.Foreground(colorHighlight).Bold(true)
 
 	tableHeight := min(max(3, len(rows)+1), max(5, m.height-16))
-	if m.width >= 160 {
+	if m.width >= 135 {
 		tableHeight = max(5, m.height-12)
 	}
 	m.peerTable = table.New(
@@ -83,6 +102,32 @@ func (m *model) rebuildPeerTable() {
 		table.WithHeight(tableHeight),
 		table.WithStyles(styles),
 	)
+}
+
+func peerTableLabel(p peerview.Peer) string {
+	if p.Managed || p.PublicKey == "" {
+		return terminalText(p.Name)
+	}
+	return "unmanaged · " + terminalText(peerview.ShortenKey(p.PublicKey))
+}
+
+func truncateCell(value string, width int) string {
+	value = terminalText(value)
+	if width <= 0 || lipgloss.Width(value) <= width {
+		return value
+	}
+	if width == 1 {
+		return "…"
+	}
+	var b strings.Builder
+	for _, r := range value {
+		candidate := b.String() + string(r) + "…"
+		if lipgloss.Width(candidate) > width {
+			break
+		}
+		b.WriteRune(r)
+	}
+	return b.String() + "…"
 }
 
 // terminalText removes control characters from server- and user-derived
@@ -99,26 +144,22 @@ func terminalText(value string) string {
 }
 
 func (m *model) peerTableAvailableWidth() int {
-	if m.width >= 160 {
-		_, peersWidth, _ := widePeerPanelWidths(m.width)
-		return max(60, peersWidth-4)
+	if m.width >= 135 {
+		peersWidth, _ := peerSplitPanelWidths(m.width)
+		return max(48, peersWidth-4)
 	}
-	if m.width >= 100 {
-		return max(60, m.width-clamp(m.width/4, 22, 30)-9)
-	}
-	return max(60, m.width-8)
+	return max(48, m.width-8)
 }
 
-func widePeerPanelWidths(total int) (servers, peers, inspector int) {
-	servers = clamp(total/5, 24, 30)
-	inspector = clamp(total/4, 40, 54)
-	peers = max(60, total-servers-inspector-8)
+func peerSplitPanelWidths(total int) (peers, inspector int) {
+	inspector = clamp(total/3, 42, 58)
+	peers = max(70, total-inspector-5)
 	return
 }
 
 func (m *model) viewPeersTab() string {
 	list := m.viewPeerList()
-	if m.peersLoaded && m.peersErr == "" && len(m.peers) > 0 {
+	if m.width >= 90 && m.width < 135 && m.peersLoaded && m.peersErr == "" && len(m.peers) > 0 {
 		list += "\n\n" + m.viewSelectedPeerCard()
 	}
 	return list
@@ -166,6 +207,8 @@ func stateLabel(p peerview.Peer) string {
 		return "◼ disabled"
 	case "drifted", "error":
 		return "! " + p.State
+	case "never_connected":
+		return "○ never"
 	default:
 		return "○ " + strings.ReplaceAll(p.State, "_", " ")
 	}
@@ -184,6 +227,19 @@ func formatBytes(n int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGT"[exp])
 }
 
+func formatBytesCompact(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%dB", n)
+	}
+	div, exp := int64(unit), 0
+	for value := n / unit; value >= unit && exp < 3; value /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%c", float64(n)/float64(div), "KMGT"[exp])
+}
+
 func (m *model) viewSelectedPeerCard() string {
 	row := m.peerTable.Cursor()
 	if row < 0 || row >= len(m.peers) {
@@ -198,9 +254,12 @@ func (m *model) viewSelectedPeerCard() string {
 	if p.ProfileAvailable {
 		profile = "stored securely in local vault"
 	}
+	nameWidth := max(12, m.width-24)
 	return titleStyle.Render("Selected peer") + "\n" +
-		fmt.Sprintf("%s  %s\nInterface: %s   Public key: %s\nProfile: %s",
-			selectedStyle.Render(terminalText(p.Name)), peerStateBadge(p.State), orDefault(terminalText(p.Interface), "-"), terminalText(peerview.ShortenKey(p.PublicKey)), profile) +
+		selectedStyle.Render(truncateCell(p.Name, nameWidth)) + "  " + peerStateBadge(p.State) + "\n" +
+		dimStyle.Render("Interface  ") + textStyle.Render(orDefault(terminalText(p.Interface), "-")) + "   " +
+		dimStyle.Render("Public key  ") + textStyle.Render(terminalText(peerview.ShortenKey(p.PublicKey))) + "\n" +
+		dimStyle.Render("Profile    ") + textStyle.Render(profile) +
 		"\n" + dimStyle.Render(managed+" · Enter opens available actions")
 }
 
@@ -230,13 +289,52 @@ func (m *model) viewSelectedPeerInspector() string {
 	} else if p.PresharedKeyPresent {
 		psk = "Yes · secret hidden"
 	}
+	_, inspectorWidth := peerSplitPanelWidths(m.width)
+	contentWidth := max(24, inspectorWidth-4)
+	name := truncateCell(peerTableLabel(p), max(12, contentWidth-12))
 	return accentHeadingStyle.Render("Selected peer") + "\n\n" +
-		selectedStyle.Render(terminalText(p.Name)) + "  " + peerStateBadge(p.State) + "\n\n" +
-		fmt.Sprintf("VPN address    %s\nInterface      %s\nEndpoint       %s\nLast handshake %s\nTraffic ↓ / ↑  %s / %s\n\nPublic key\n%s\nPreshared key  %s\nClient profile %s\n%s\n\n",
-			orDefault(terminalText(p.VPNIP), "-"), orDefault(terminalText(p.Interface), "-"), orDefault(terminalText(p.Endpoint), "Not observed"),
-			formatHandshakeAge(p.LatestHandshakeSeconds), formatBytes(p.RxBytes), formatBytes(p.TxBytes),
-			terminalText(p.PublicKey), psk, profile, ownership) +
+		selectedStyle.Render(name) + "  " + peerStateBadge(p.State) + "\n\n" +
+		inspectorLine("VPN address", orDefault(p.VPNIP, "-"), contentWidth) + "\n" +
+		inspectorLine("Interface", orDefault(p.Interface, "-"), contentWidth) + "\n" +
+		inspectorLine("Endpoint", orDefault(p.Endpoint, "Not observed"), contentWidth) + "\n" +
+		inspectorLine("Last handshake", formatHandshakeAge(p.LatestHandshakeSeconds), contentWidth) + "\n" +
+		inspectorLine("Traffic ↓ / ↑", formatBytes(p.RxBytes)+" / "+formatBytes(p.TxBytes), contentWidth) + "\n\n" +
+		dimStyle.Render("Public key") + "\n" + textStyle.Render(wrapPlainText(p.PublicKey, contentWidth, 2)) + "\n" +
+		inspectorLine("Preshared key", psk, contentWidth) + "\n" +
+		inspectorLine("Client profile", profile, contentWidth) + "\n" +
+		dimStyle.Render(ownership) + "\n\n" +
 		dimStyle.Render("Enter opens actions · r refreshes")
+}
+
+func inspectorLine(label, value string, width int) string {
+	const labelWidth = 16
+	label = truncateCell(label, labelWidth-1)
+	value = truncateCell(value, max(8, width-labelWidth))
+	return dimStyle.Copy().Width(labelWidth).Render(label) + textStyle.Render(value)
+}
+
+func wrapPlainText(value string, width, maxLines int) string {
+	value = terminalText(value)
+	if width <= 0 || lipgloss.Width(value) <= width {
+		return value
+	}
+	var lines []string
+	for value != "" && len(lines) < maxLines {
+		if len(lines) == maxLines-1 {
+			lines = append(lines, truncateCell(value, width))
+			break
+		}
+		part := truncateCell(value, width)
+		if strings.HasSuffix(part, "…") {
+			part = strings.TrimSuffix(part, "…")
+		}
+		if part == "" {
+			break
+		}
+		lines = append(lines, part)
+		value = strings.TrimPrefix(value, part)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // loadPeersFromSessionCmd refreshes the peer table over the connection
@@ -318,7 +416,7 @@ func (m *model) openActionMenu() (tea.Model, tea.Cmd) {
 	if m.selectedPeer.ProfileAvailable {
 		options = append(options,
 			peerActionOption{"Show QR code", "qr", false},
-			peerActionOption{"Save client profile to home directory", "export", false},
+			peerActionOption{"Save profile + QR bundle to home directory", "export", false},
 		)
 	}
 	options = append(options, peerActionOption{"Revoke access and optionally delete local data", "revoke", true})
@@ -701,10 +799,10 @@ func (m *model) startExportForm() (tea.Model, tea.Cmd) {
 		m.setError(fmt.Errorf("resolve home directory: %w", err))
 		return m, nil
 	}
-	m.exportPath = safeProfileFilename(m.selectedPeer.Name)
+	m.exportPath = safeProfileBase(m.selectedPeer.Name) + "_WireGuard"
 	m.exportForm = huh.NewForm(huh.NewGroup(
-		huh.NewInput().Title("Save " + m.selectedPeer.Name + " in " + home).
-			Description("File name only. The secret profile is written with mode 0600.").
+		huh.NewInput().Title("Save " + m.selectedPeer.Name + " bundle in " + home).
+			Description("Directory name only. It will contain a secret .conf and QR PNG.").
 			Value(&m.exportPath).
 			Validate(func(s string) error {
 				if s == "" || s == "." || s == ".." {
@@ -712,6 +810,9 @@ func (m *model) startExportForm() (tea.Model, tea.Cmd) {
 				}
 				if filepath.Base(s) != s || strings.ContainsAny(s, `/\`) {
 					return fieldErr("enter a file name, not a path")
+				}
+				if safeProfileBase(s) != s {
+					return fieldErr("use letters, numbers, hyphens, and underscores only")
 				}
 				return nil
 			}),
@@ -732,7 +833,7 @@ func (m *model) updateExportForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setError(err)
 			return m, nil
 		}
-		m.exportPeer(filepath.Join(home, m.exportPath))
+		m.exportPeerBundle(filepath.Join(home, m.exportPath))
 		return m, nil
 	case huh.StateAborted:
 		m.screen = screenServerDetail
@@ -742,6 +843,10 @@ func (m *model) updateExportForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func safeProfileFilename(name string) string {
+	return safeProfileBase(name) + ".conf"
+}
+
+func safeProfileBase(name string) string {
 	var b strings.Builder
 	for _, r := range strings.TrimSpace(name) {
 		switch {
@@ -758,14 +863,14 @@ func safeProfileFilename(name string) string {
 	if base == "" {
 		base = "wireguard-peer"
 	}
-	return base + ".conf"
+	return base
 }
 
 func (m *model) viewExportForm() string {
-	return formScreen(m, "Save client profile", m.exportForm.View(), "Esc Cancel", "Ctrl+C Quit")
+	return formScreen(m, "Save profile + QR", m.exportForm.View(), "Esc Cancel", "Ctrl+C Quit")
 }
 
-func (m *model) exportPeer(path string) {
+func (m *model) exportPeerBundle(dirPath string) {
 	meta, ok := m.vault.GetPeerByName(m.selected.ID, m.selectedPeer.Name)
 	if !ok {
 		m.setError(fmt.Errorf("peer %q not found", m.selectedPeer.Name))
@@ -776,25 +881,49 @@ func (m *model) exportPeer(path string) {
 		m.setError(fmt.Errorf("no local profile stored for %q", meta.Name))
 		return
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	png, err := peerops.RenderQRPNG(profile)
 	if err != nil {
+		m.setError(err)
+		return
+	}
+	if err := os.Mkdir(dirPath, 0o700); err != nil {
 		if os.IsExist(err) {
-			m.setError(fmt.Errorf("%s already exists", path))
+			m.setError(fmt.Errorf("%s already exists", dirPath))
 		} else {
 			m.setError(err)
 		}
 		return
 	}
-	if _, err := f.WriteString(profile); err != nil {
-		_ = f.Close()
-		_ = os.Remove(path)
+	base := safeProfileBase(meta.Name)
+	configPath := filepath.Join(dirPath, base+".conf")
+	qrPath := filepath.Join(dirPath, base+"_QR.png")
+	if err := writeSecretFile(configPath, []byte(profile)); err != nil {
+		_ = os.Remove(dirPath)
 		m.setError(err)
 		return
+	}
+	if err := writeSecretFile(qrPath, png); err != nil {
+		_ = os.Remove(configPath)
+		_ = os.Remove(dirPath)
+		m.setError(err)
+		return
+	}
+	m.setStatus("Exported " + meta.Name + " profile and QR to " + dirPath)
+}
+
+func writeSecretFile(path string, content []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", path, err)
+	}
+	if _, err := f.Write(content); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return fmt.Errorf("write %s: %w", path, err)
 	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(path)
-		m.setError(err)
-		return
+		return fmt.Errorf("close %s: %w", path, err)
 	}
-	m.setStatus("Exported " + meta.Name + " to " + path)
+	return nil
 }

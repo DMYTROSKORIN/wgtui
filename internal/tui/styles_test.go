@@ -6,10 +6,15 @@ import (
 )
 
 func TestPeerStateBadge_CoversAllKnownStates(t *testing.T) {
+	wantLabel := map[string]string{"never_connected": "never"}
 	for _, state := range []string{"online", "idle", "never_connected", "disabled", "unmanaged", "drifted", "error", "something-unexpected"} {
 		out := peerStateBadge(state)
-		if !strings.Contains(out, state) {
-			t.Errorf("peerStateBadge(%q) = %q, doesn't contain the state name", state, out)
+		want := state
+		if label := wantLabel[state]; label != "" {
+			want = label
+		}
+		if !strings.Contains(out, want) {
+			t.Errorf("peerStateBadge(%q) = %q, doesn't contain %q", state, out, want)
 		}
 	}
 }

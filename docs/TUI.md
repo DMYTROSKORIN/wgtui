@@ -30,12 +30,13 @@ content with a fresh salt. A failed write leaves the old vault usable.
 
 - Server manager: server list on the left, selected connection details on the
   right.
-- Server dashboard: medium terminals show server/session summary on the left and
-  Overview, Peers or Diagnose on the right. Narrow terminals use one content panel.
-- Wide Peers dashboard: three proportional panels show Servers, a full-height peer
-  table, and a persistent Selected peer inspector. The table gains an Endpoint
-  column when space permits; its other columns grow proportionally instead of
-  leaving an unused rectangle on the right.
+- Once a server is open, its name and connection state move into the header; the
+  redundant Servers sidebar disappears. `Esc` returns to the server manager.
+- Narrow terminals show a compact Peer / State / Last seen table. Medium terminals
+  progressively add VPN IP, RX and TX and place a compact selected-peer card below.
+- Wide terminals use two proportional panels: a peer table and a persistent Selected
+  peer inspector. Endpoint is added to the table only when it still leaves a useful
+  Peer / alias column. Cells are always truncated to one terminal row, never wrapped.
 - The inspector shows VPN address, interface, endpoint, readable handshake age,
   traffic, full public key, hidden PSK presence, profile availability and ownership.
 - Operations: action selection, a secret-free plan, explicit confirmation,
@@ -46,8 +47,9 @@ content with a fresh salt. A failed write leaves the old vault usable.
 - Peer changes immediately reload the Peers view. A visible activity line distinguishes
   loading/refreshing from an idle screen.
 - Every managed peer whose encrypted profile is available has `Show QR code` and
-  `Save client profile to home directory` actions. Exports are mode `0600`, never
-  overwrite an existing file, and accept a file name rather than an arbitrary path.
+  `Save profile + QR bundle` actions. A `DimaOffice_WireGuard` directory (`0700`)
+  contains `DimaOffice.conf` and `DimaOffice_QR.png` (`0600`). Existing bundles are
+  never overwritten; both files are secrets because both encode the private key.
 
 ## Client DNS default
 

@@ -78,6 +78,17 @@ func RenderQRTerminal(confText string) (string, error) {
 	return qr.ToSmallString(false), nil
 }
 
+// RenderQRPNG encodes the same secret client profile as a PNG suitable for
+// importing on a phone. Callers must store the returned bytes with the same
+// permissions as the .conf because the QR contains the client private key.
+func RenderQRPNG(confText string) ([]byte, error) {
+	png, err := qrcode.Encode(confText, qrcode.Medium, 512)
+	if err != nil {
+		return nil, fmt.Errorf("encode QR code PNG: %w", err)
+	}
+	return png, nil
+}
+
 // RotateProfileParams recovers the client-facing profile parameters
 // (endpoint, client AllowedIPs, DNS) that live only in the *client*
 // profile, not the server-side block, by re-parsing the peer's previous

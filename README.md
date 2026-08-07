@@ -55,7 +55,8 @@ this project — it is never a managed server.
   result, and rolls back on failure. The copy is retained only if recovery itself fails.
 - No secret is ever passed as a process argument, logged, or included in `--json` output.
 - App-owned local state lives in `~/.wgtui-config/vault.json`, encrypted under the
-  master password. Explicit profile exports go to the invoking user's home with mode `0600`.
+  master password. An explicit TUI export creates a `0700` bundle in the invoking
+  user's home with a profile and QR PNG, both mode `0600`.
 - `wgtui` refuses to run as root so local keys cannot silently move into root's home.
 
 Full analysis: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).

@@ -96,13 +96,13 @@ func (m *model) viewServerList() string {
 
 func (m *model) viewServerDetail() string {
 	panelHeight := m.dashboardPanelHeight()
-	if m.width >= 160 && m.tab == tabPeers {
-		serversWidth, peersWidth, inspectorWidth := widePeerPanelWidths(m.width)
-		side := panelStyle.Width(serversWidth).Height(panelHeight).Render(m.viewServerSidebar())
+	header := m.viewServerHeader()
+	if m.width >= 135 && m.tab == tabPeers {
+		peersWidth, inspectorWidth := peerSplitPanelWidths(m.width)
 		peers := panelStyle.Width(peersWidth).Height(panelHeight).Render(tabsLine(m.tab) + "\n\n" + m.viewPeerList())
 		inspector := panelStyle.Width(inspectorWidth).Height(panelHeight).Render(m.viewSelectedPeerInspector())
-		body := lipgloss.JoinHorizontal(lipgloss.Top, side, " ", peers, " ", inspector)
-		return appHeader(m.selected.DisplayName) + "\n" + body + "\n" + footerStyle.Render(detailFooter(m.tab))
+		body := lipgloss.JoinHorizontal(lipgloss.Top, peers, " ", inspector)
+		return header + "\n" + body + "\n" + footerStyle.Render(detailFooter(m.tab, m.width))
 	}
 
 	var content strings.Builder
@@ -116,29 +116,19 @@ func (m *model) viewServerDetail() string {
 		content.WriteString(m.viewOverviewTab())
 	}
 
-	if m.width < 100 {
-		main := panelStyle.Width(max(40, m.width-4)).Height(panelHeight).Render(content.String())
-		return appHeader(m.selected.DisplayName) + "\n" + main + "\n" + footerStyle.Render(detailFooter(m.tab))
-	}
-	sideWidth := clamp(m.width/4, 22, 30)
-	mainWidth := max(44, m.width-sideWidth-5)
-	side := panelStyle.Width(sideWidth).Height(panelHeight).Render(m.viewServerSidebar())
-	main := panelStyle.Width(mainWidth).Height(panelHeight).Render(content.String())
-	return appHeader(m.selected.DisplayName) + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, side, " ", main) + "\n" + footerStyle.Render(detailFooter(m.tab))
+	main := panelStyle.Width(max(40, m.width-4)).Height(panelHeight).Render(content.String())
+	return header + "\n" + main + "\n" + footerStyle.Render(detailFooter(m.tab, m.width))
 }
 
-func (m *model) viewServerSidebar() string {
+func (m *model) viewServerHeader() string {
 	connection := badge(warningStyle, "○", "connecting")
 	if m.detailErr != "" {
 		connection = badge(dangerStyle, "●", "error")
 	} else if m.detailSession != nil && !m.detailSession.closed {
 		connection = badge(successStyle, "●", "connected")
 	}
-	return titleStyle.Render("Servers") + "\n\n" +
-		selectedStyle.Render("▶ "+m.selected.DisplayName) + "\n" +
-		dimStyle.Render(m.selected.SSHHostOrAlias) + "\n\n" +
-		connection + "\n\n" +
-		dimStyle.Render("Tab switches views.\nr refreshes explicitly.\nEsc returns to servers.")
+	nameWidth := max(12, m.width-lipgloss.Width(connection)-12)
+	return appHeader(truncateCell(m.selected.DisplayName, nameWidth)) + "  " + connection
 }
 
 func tabsLine(active detailTab) string {
@@ -161,7 +151,17 @@ func tabsLine(active detailTab) string {
 	return strings.Join(parts, "   ")
 }
 
-func detailFooter(tab detailTab) string {
+func detailFooter(tab detailTab, width int) string {
+	if width < 90 {
+		switch tab {
+		case tabPeers:
+			return keyBar("?:Help", "n:New", "Enter:Actions", "r:Refresh", "Esc:Back", "^C:Quit")
+		case tabDiagnose:
+			return keyBar("?:Help", "r:Refresh", "Tab:Next", "Esc:Back", "^C:Quit")
+		default:
+			return keyBar("?:Help", "i:Install", "c:Configure", "r:Refresh", "Esc:Back", "^C:Quit")
+		}
+	}
 	switch tab {
 	case tabPeers:
 		return keyBar("? Help", "n New peer", "Enter Actions", "r Refresh", "Tab Next", "Esc Back", "Ctrl+C Quit")

@@ -252,5 +252,5 @@ func (m *model) viewPeerReveal() string {
 	}
 
 	return appHeader(m.selected.DisplayName+" / "+m.revealName) + "\n" + fullPanel(m, b.String()) + "\n" +
-		keyBar("s Show config", "g Show QR", "e Save to home", "Enter Done", "Ctrl+C Quit")
+		keyBar("s Show config", "g Show QR", "e Save profile+QR", "Enter Done", "Ctrl+C Quit")
 }

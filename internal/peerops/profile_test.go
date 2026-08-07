@@ -66,6 +66,16 @@ func TestRenderQRTerminal(t *testing.T) {
 	}
 }
 
+func TestRenderQRPNG(t *testing.T) {
+	png, err := RenderQRPNG("[Interface]\nPrivateKey = x\n")
+	if err != nil {
+		t.Fatalf("RenderQRPNG: %v", err)
+	}
+	if len(png) < 8 || string(png[:8]) != "\x89PNG\r\n\x1a\n" {
+		t.Fatalf("result is not a PNG: %x", png[:min(len(png), 8)])
+	}
+}
+
 func TestSplitTrim(t *testing.T) {
 	cases := []struct {
 		in   string
