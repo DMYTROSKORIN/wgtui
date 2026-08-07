@@ -41,7 +41,7 @@ func (m *model) rebuildPeerTable() {
 	}
 
 	styles := table.DefaultStyles()
-	styles.Header = styles.Header.Foreground(lipgloss.Color(colorMuted)).BorderForeground(lipgloss.Color(colorMuted))
+	styles.Header = styles.Header.Faint(true)
 	styles.Selected = styles.Selected.Foreground(lipgloss.Color(colorHighlight)).Bold(true)
 
 	m.peerTable = table.New(

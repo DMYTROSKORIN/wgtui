@@ -9,11 +9,18 @@ import (
 // Colors are plain ANSI 4-bit indices (0-15), not fixed hex values: the
 // terminal emulator itself remaps these to whatever palette the user has
 // configured (Dracula, Nord, Gruvbox, ...), so wgtui's colors always match
-// the rest of their terminal instead of clashing with it. huh.ThemeBase16
-// (used for every form) works the same way - these constants mirror its
-// choices so forms and hand-rolled screens read as one consistent app.
+// the rest of their terminal instead of clashing with it.
+//
+// Secondary/dim text is deliberately NOT one of these indices (there's no
+// colorMuted): ANSI 8 ("bright black") is notoriously unreliable across
+// terminal configs - on some it's tuned close enough to the background
+// that secondary text becomes nearly illegible (reported: "очень бледные
+// цвета", every not-yet-focused field washed out). Faint(true) dims
+// whatever the terminal's actual foreground already is via the SGR faint
+// attribute instead of trusting a specific untuned palette slot - the
+// same "respects your terminal" spirit, just not dependent on one color
+// index rendering with reasonable contrast.
 const (
-	colorMuted     = "8" // bright black - secondary text, borders, hints
 	colorDanger    = "9" // bright red - fail, revoke, destructive confirms
 	colorSuccess   = "2" // green - active, pass, installed
 	colorWarning   = "3" // yellow - disabled, warn, drift
@@ -24,9 +31,9 @@ const (
 
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorAccent))
-	subtitleStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	subtitleStyle = lipgloss.NewStyle().Faint(true)
 	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorHighlight))
-	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	dimStyle      = lipgloss.NewStyle().Faint(true)
 	textStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color(colorText))
 	successStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color(colorSuccess))
 	warningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarning))
@@ -34,20 +41,36 @@ var (
 
 	panelStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color(colorMuted)).
 			Padding(0, 1)
 
 	tabActiveStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorAccent)).Underline(true)
-	tabInactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	tabInactiveStyle = lipgloss.NewStyle().Faint(true)
 
-	footerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	footerStyle = lipgloss.NewStyle().Faint(true)
 )
 
-// formTheme is the one huh.Theme every form/confirm/select in the app uses,
-// so a huh screen and a hand-rolled screen never look like two different
-// programs stitched together.
+// formTheme is the one huh.Theme every form/confirm/select in the app
+// uses, so a huh screen and a hand-rolled screen never look like two
+// different programs stitched together. Built on ThemeBase16 (so focused
+// titles/selectors/errors keep its terminal-adaptive coloring), but every
+// place it uses ANSI 8 for secondary text is swapped for Faint(true) -
+// see the package-level color doc comment for why.
 func formTheme() *huh.Theme {
-	return huh.ThemeBase16()
+	t := huh.ThemeBase16()
+
+	faint := lipgloss.NewStyle().Faint(true)
+
+	t.Focused.Base = t.Focused.Base.BorderForeground(lipgloss.Color(colorAccent))
+	t.Focused.Description = faint
+	t.Focused.TextInput.Placeholder = faint
+
+	t.Blurred.Title = faint
+	t.Blurred.NoteTitle = faint
+	t.Blurred.Description = faint
+	t.Blurred.TextInput.Prompt = faint
+	t.Blurred.TextInput.Placeholder = faint
+
+	return t
 }
 
 // formKeyMap adds "esc" as a second way to abort a form/confirm/select,
