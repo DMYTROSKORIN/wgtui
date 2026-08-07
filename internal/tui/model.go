@@ -239,9 +239,24 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // releaseTerminalAndRun runs fn with the real terminal (Bubble Tea's raw
 // mode released), restoring it again once fn returns - every flow that
 // needs an interactive host-key/password/sudo prompt goes through this,
-// since Bubble Tea otherwise owns stdin in raw mode.
+// since Bubble Tea otherwise owns stdin in raw mode. This is also the
+// single highest-risk spot in the whole program for a genuine crash: it's
+// the only place doing raw terminal-mode surgery concurrently with
+// Bubble Tea's own event loop, and a reported "the app just dies at the
+// sudo password prompt" crash couldn't be reproduced against a real SSH
+// target despite trying - so on top of fixing every specific bug found,
+// recover() here converts *any* panic in this window into an error
+// message instead of taking the whole program down. The recover defer is
+// registered before ReleaseTerminal specifically so it still runs (LIFO)
+// after RestoreTerminal's defer below, if that's what panics - terminal
+// state gets put back first either way.
 func (m *model) releaseTerminalAndRun(fn func() tea.Msg) tea.Cmd {
-	return func() tea.Msg {
+	return func() (result tea.Msg) {
+		defer func() {
+			if r := recover(); r != nil {
+				result = errMsg{err: fmt.Errorf("internal error: %v (this is a bug - please report it)", r)}
+			}
+		}()
 		if err := m.program.ReleaseTerminal(); err != nil {
 			return errMsg{err: err}
 		}
