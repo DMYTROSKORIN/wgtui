@@ -1,41 +1,10 @@
 package tui
 
 import (
-	"context"
-	"fmt"
-	"os"
 	"strings"
-	"time"
-
-	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/diagnostics"
-	"github.com/DMYTROSKORIN/wgtui/internal/discovery"
 )
-
-// loadDiagnoseCmd reuses the exact same checklist internal/cli's `diagnose`
-// command does (internal/diagnostics.BuildChecks), just rendered as a
-// colored list instead of plain text.
-func (m *model) loadDiagnoseCmd() tea.Cmd {
-	s := m.selected
-	localPeers := m.vault.ListPeers(s.ID)
-
-	return m.releaseTerminalAndRun(func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		target := connectingBanner(os.Stdout, s)
-		prompts := newTerminalPrompts(os.Stdout, target)
-		sess, err := dial(ctx, s, prompts)
-		if err != nil {
-			return diagnoseMsg{err: fmt.Sprintf("connect: %v", err)}
-		}
-		defer sess.close()
-
-		report := discovery.Discover(ctx, sess.client, prompts)
-		checks := diagnostics.BuildChecks(report, localPeers, time.Now())
-		return diagnoseMsg{checks: checks}
-	})
-}
 
 func (m *model) viewDiagnoseTab() string {
 	switch {

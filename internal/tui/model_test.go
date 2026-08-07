@@ -33,8 +33,54 @@ func key(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyEnter}
 	case "esc":
 		return tea.KeyMsg{Type: tea.KeyEsc}
+	case "tab":
+		return tea.KeyMsg{Type: tea.KeyTab}
+	case "ctrl+c":
+		return tea.KeyMsg{Type: tea.KeyCtrlC}
 	default:
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	}
+}
+
+func TestCtrlCQuitsFromEveryScreenAndClosesSessions(t *testing.T) {
+	for _, screen := range []screen{screenServerList, screenServerForm, screenServerDetail, screenConfirm, screenPeerForm, screenChangePassword} {
+		m := testModel(t)
+		m.screen = screen
+		activeClosed, detailClosed := false, false
+		m.activeSession = &session{cleanup: func() { activeClosed = true }}
+		m.detailSession = &session{cleanup: func() { detailClosed = true }}
+		_, cmd := m.Update(key("ctrl+c"))
+		if cmd == nil {
+			t.Fatalf("screen %v: Ctrl+C returned no quit command", screen)
+		}
+		if _, ok := cmd().(tea.QuitMsg); !ok {
+			t.Fatalf("screen %v: Ctrl+C did not return tea.QuitMsg", screen)
+		}
+		if !activeClosed || !detailClosed {
+			t.Fatalf("screen %v: sessions not closed (active=%v detail=%v)", screen, activeClosed, detailClosed)
+		}
+	}
+}
+
+func TestTabUsesExistingDetailSessionWithoutTerminalRelease(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office"})
+	m.screen = screenServerDetail
+	m.tab = tabOverview
+	m.selected = domain.Server{ID: "office"}
+	m.detailSession = nil
+
+	res, cmd := m.Update(key("tab"))
+	rm := res.(*model)
+	if rm.tab != tabPeers {
+		t.Fatalf("tab = %v, want tabPeers", rm.tab)
+	}
+	if cmd == nil {
+		t.Fatal("expected an in-TUI peer load command")
+	}
+	msg := cmd()
+	peerMsg, ok := msg.(peerListMsg)
+	if !ok || peerMsg.err == "" {
+		t.Fatalf("command result = %#v, want a controlled disconnected-session error", msg)
 	}
 }
 

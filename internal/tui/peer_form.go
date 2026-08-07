@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -99,29 +98,26 @@ func (m *model) startPeerAdd() tea.Cmd {
 	endpointHost := m.pfEndpointHost
 	withPSK := m.pfPSK
 
-	return m.releaseTerminalAndRun(func() tea.Msg {
+	sess := m.detailSession
+	if sess == nil || sess.closed {
+		return func() tea.Msg {
+			return planReadyMsg{err: fmt.Errorf("server session is not connected; return to Overview and press F5"), cancelScreen: screenServerDetail}
+		}
+	}
+	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
-		target := connectingBanner(os.Stdout, s)
-		prompts := newTerminalPrompts(os.Stdout, target)
-		sess, err := dial(ctx, s, prompts)
-		if err != nil {
-			return planReadyMsg{err: fmt.Errorf("connect: %w", err), cancelScreen: screenServerDetail}
-		}
 
 		iface, err := peerops.ResolveInterface(ctx, sess.client, "")
 		if err != nil {
-			sess.close()
 			return planReadyMsg{err: err, cancelScreen: screenServerDetail}
 		}
-		cc, err := peerops.FetchCurrentConfig(ctx, sess.client, prompts, iface)
+		cc, err := peerops.FetchCurrentConfig(ctx, sess.client, sess.prompts, iface)
 		if err != nil {
-			sess.close()
 			return planReadyMsg{err: err, cancelScreen: screenServerDetail}
 		}
 		addr, err := peerops.NextFreeAddress(cc.VPNCIDR, cc.UsedAddresses)
 		if err != nil {
-			sess.close()
 			return planReadyMsg{err: fmt.Errorf("allocate VPN address: %w", err), cancelScreen: screenServerDetail}
 		}
 		serverAllowedIPs := []string{addr.String() + "/32"}
@@ -147,12 +143,12 @@ func (m *model) startPeerAdd() tea.Cmd {
 			endpointHost: host, addr: addr, iface: iface,
 		}
 		return planReadyMsg{
-			sess: sess, cancelScreen: screenServerDetail,
+			sess: sess, borrowed: true, cancelScreen: screenServerDetail,
 			title: "Add peer " + name + "?",
 			plan:  plan,
 			apply: m.applyPeerAdd(params),
 		}
-	})
+	}
 }
 
 // peerAddParams carries the AddPeer call's already-computed arguments from
@@ -176,7 +172,7 @@ type peerAddParams struct {
 func (m *model) applyPeerAdd(p peerAddParams) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
 		sess := m.activeSession
-		return m.releaseTerminalAndRun(func() tea.Msg {
+		return func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 			result, err := peerops.AddPeer(ctx, sess.client, sess.prompts, p.cc, p.name, p.serverAllowedIPs, p.keepalive, p.withPSK)
@@ -207,7 +203,7 @@ func (m *model) applyPeerAdd(p peerAddParams) func(*model) tea.Cmd {
 				m.setStatus("Added " + p.name + ". Backup: " + result.Outcome.BackupPath)
 				return nil
 			}}
-		})
+		}
 	}
 }
 

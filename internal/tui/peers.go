@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -20,13 +21,19 @@ import (
 )
 
 func (m *model) rebuildPeerTable() {
+	available := m.width - 8
+	if m.width >= 100 {
+		available = m.width - clamp(m.width/4, 22, 30) - 9
+	}
+	nameWidth := clamp(available/6, 12, 16)
+	vpnWidth := clamp(available/5, 14, 17)
+	trafficWidth := clamp(available/4, 19, 22)
 	cols := []table.Column{
-		{Title: "Name", Width: 18},
-		{Title: "Interface", Width: 10},
-		{Title: "VPN IP", Width: 15},
-		{Title: "State", Width: 16},
-		{Title: "Handshake", Width: 12},
-		{Title: "RX/TX", Width: 16},
+		{Title: "Peer", Width: nameWidth},
+		{Title: "VPN IP", Width: vpnWidth},
+		{Title: "State", Width: 12},
+		{Title: "Last seen", Width: 9},
+		{Title: "Traffic ↓ / ↑", Width: trafficWidth},
 	}
 	rows := make([]table.Row, 0, len(m.peers))
 	for _, p := range m.peers {
@@ -35,8 +42,8 @@ func (m *model) rebuildPeerTable() {
 			handshake = fmt.Sprintf("%ds ago", *p.LatestHandshakeSeconds)
 		}
 		rows = append(rows, table.Row{
-			p.Name, orDefault(p.Interface, "-"), orDefault(p.VPNIP, "-"),
-			p.State, handshake, fmt.Sprintf("%d/%d", p.RxBytes, p.TxBytes),
+			p.Name, orDefault(p.VPNIP, "-"), stateLabel(p), handshake,
+			fmt.Sprintf("%s / %s", formatBytes(p.RxBytes), formatBytes(p.TxBytes)),
 		})
 	}
 
@@ -48,7 +55,7 @@ func (m *model) rebuildPeerTable() {
 		table.WithColumns(cols),
 		table.WithRows(rows),
 		table.WithFocused(true),
-		table.WithHeight(min(len(rows)+1, 12)),
+		table.WithHeight(min(max(3, len(rows)+1), max(5, m.height-16))),
 		table.WithStyles(styles),
 	)
 }
@@ -62,17 +69,68 @@ func (m *model) viewPeersTab() string {
 	case len(m.peers) == 0:
 		return dimStyle.Render("No peers yet. Press [a] to add one.") + "\n"
 	default:
-		return m.peerTable.View() + "\n" + dimStyle.Render("\"online\" is a heuristic based on handshake recency, not proof of an active connection.")
+		return m.peerTable.View() + "\n\n" + m.viewSelectedPeerCard()
 	}
 }
 
-// loadPeersCmd snapshots everything it needs from the vault synchronously
-// (before the goroutine starts) rather than reading m.vault from inside
-// it: the async closure runs concurrently with the Bubble Tea event loop,
-// which could otherwise be mutating the same vault from an unrelated
-// screen at the same time.
-func (m *model) loadPeersCmd() tea.Cmd {
+func stateLabel(p peerview.Peer) string {
+	switch p.State {
+	case "online":
+		return "● online"
+	case "disabled":
+		return "◼ disabled"
+	case "drifted", "error":
+		return "! " + p.State
+	default:
+		return "○ " + strings.ReplaceAll(p.State, "_", " ")
+	}
+}
+
+func formatBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for value := n / unit; value >= unit && exp < 3; value /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGT"[exp])
+}
+
+func (m *model) viewSelectedPeerCard() string {
+	row := m.peerTable.Cursor()
+	if row < 0 || row >= len(m.peers) {
+		return ""
+	}
+	p := m.peers[row]
+	managed := "unmanaged (read-only)"
+	if p.Managed {
+		managed = "managed by wgtui"
+	}
+	profile := "not available"
+	if p.ProfileAvailable {
+		profile = "stored securely in local vault"
+	}
+	return titleStyle.Render("Selected peer") + "\n" +
+		fmt.Sprintf("%s  %s\nInterface: %s   Public key: %s\nProfile: %s",
+			selectedStyle.Render(p.Name), peerStateBadge(p.State), orDefault(p.Interface, "-"), peerview.ShortenKey(p.PublicKey), profile) +
+		"\n" + dimStyle.Render(managed+" · Enter opens available actions")
+}
+
+// loadPeersFromSessionCmd refreshes the peer table over the connection
+// opened for the server detail screen. Discovery has already collected
+// and cached any SSH/sudo credentials in this session, so changing tabs
+// never drops out of the TUI to ask for another password.
+func (m *model) loadPeersFromSessionCmd() tea.Cmd {
 	s := m.selected
+	sess := m.detailSession
+	if sess == nil || sess.closed {
+		return func() tea.Msg {
+			return peerListMsg{err: "server session is not connected; press r on Overview to reconnect"}
+		}
+	}
 	localPeers := m.vault.ListPeers(s.ID)
 	profileSet := make(map[string]bool, len(localPeers))
 	for _, p := range localPeers {
@@ -81,21 +139,10 @@ func (m *model) loadPeersCmd() tea.Cmd {
 		}
 	}
 
-	return m.releaseTerminalAndRun(func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		target := connectingBanner(os.Stdout, s)
-		prompts := newTerminalPrompts(os.Stdout, target)
-		sess, err := dial(ctx, s, prompts)
-		if err != nil {
-			return peerListMsg{err: fmt.Sprintf("connect: %v", err)}
-		}
-		defer sess.close()
-
-		if err := sess.client.SudoValidate(ctx, prompts); err != nil {
-			return peerListMsg{err: fmt.Sprintf("sudo: %v", err)}
-		}
-		res, err := sess.client.RunSudo(ctx, "wg show all dump", prompts)
+		res, err := sess.client.RunSudo(ctx, "wg show all dump", sess.prompts)
 		if err != nil {
 			return peerListMsg{err: fmt.Sprintf("wg show all dump: %v", err)}
 		}
@@ -106,10 +153,8 @@ func (m *model) loadPeersCmd() tea.Cmd {
 		if err != nil {
 			return peerListMsg{err: fmt.Sprintf("parse wg dump: %v", err)}
 		}
-
-		peers := peerview.Reconcile(dump.Peers, localPeers, func(pk string) bool { return profileSet[pk] }, time.Now())
-		return peerListMsg{peers: peers}
-	})
+		return peerListMsg{peers: peerview.Reconcile(dump.Peers, localPeers, func(pk string) bool { return profileSet[pk] }, time.Now())}
+	}
 }
 
 // resolvePeerInterface prefers the interface recorded in a peer's own
@@ -138,14 +183,14 @@ func (m *model) openActionMenu() (tea.Model, tea.Cmd) {
 
 	var options []huh.Option[string]
 	if m.selectedPeer.State == "disabled" {
-		options = append(options, huh.NewOption("Enable", "enable"))
+		options = append(options, huh.NewOption("Resume access — restore the same server entry", "enable"))
 	} else {
-		options = append(options, huh.NewOption("Disable", "disable"))
-		options = append(options, huh.NewOption("Rotate keys", "rotate"))
+		options = append(options, huh.NewOption("Pause access — keep profile and metadata", "disable"))
+		options = append(options, huh.NewOption("Rotate keys — replace client identity", "rotate"))
 	}
-	options = append(options, huh.NewOption("Revoke", "revoke"))
+	options = append(options, huh.NewOption("Revoke access — destructive", "revoke"))
 	if m.selectedPeer.ProfileAvailable {
-		options = append(options, huh.NewOption("Export profile", "export"))
+		options = append(options, huh.NewOption("Export client profile", "export"))
 	}
 
 	var choice string
@@ -185,7 +230,15 @@ func (m *model) updateActionMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) viewActionMenu() string {
-	return titleStyle.Render("wgtui") + "\n\n" + m.actionMenu.View()
+	p := m.selectedPeer
+	card := titleStyle.Render("Peer actions") + "\n\n" +
+		fmt.Sprintf("%s  %s\nVPN IP: %s   Interface: %s\nPublic key: %s\n\n",
+			selectedStyle.Render(p.Name), peerStateBadge(p.State), orDefault(p.VPNIP, "-"),
+			orDefault(p.Interface, "-"), peerview.ShortenKey(p.PublicKey)) +
+		m.actionMenu.View()
+	return appHeader(m.selected.DisplayName+" / Peers") + "\n" +
+		panelStyle.Width(min(82, max(54, m.width-4))).Render(card) + "\n" +
+		keyBar("↑/↓ Select", "Enter Continue", "Esc Cancel", "F10 Quit")
 }
 
 // startPeerAction covers disable/enable/rotate/revoke, which all share the
@@ -204,38 +257,36 @@ func (m *model) startPeerAction(peer peerview.Peer, action string) tea.Cmd {
 		return m.startRevoke(s, meta)
 	}
 
-	return m.releaseTerminalAndRun(func() tea.Msg {
+	sess := m.detailSession
+	if sess == nil || sess.closed {
+		return func() tea.Msg {
+			return planReadyMsg{err: fmt.Errorf("server session is not connected; return to Overview and press F5"), cancelScreen: screenServerDetail}
+		}
+	}
+	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
-		target := connectingBanner(os.Stdout, s)
-		prompts := newTerminalPrompts(os.Stdout, target)
-		sess, err := dial(ctx, s, prompts)
-		if err != nil {
-			return planReadyMsg{err: fmt.Errorf("connect: %w", err), cancelScreen: screenServerDetail}
-		}
 
 		iface, err := resolvePeerInterface(ctx, sess, meta.Interface, "")
 		if err != nil {
-			sess.close()
 			return planReadyMsg{err: err, cancelScreen: screenServerDetail}
 		}
-		cc, err := peerops.FetchCurrentConfig(ctx, sess.client, prompts, iface)
+		cc, err := peerops.FetchCurrentConfig(ctx, sess.client, sess.prompts, iface)
 		if err != nil {
-			sess.close()
 			return planReadyMsg{err: err, cancelScreen: screenServerDetail}
 		}
 
 		switch action {
 		case "disable":
 			return planReadyMsg{
-				sess: sess, cancelScreen: screenServerDetail,
+				sess: sess, borrowed: true, cancelScreen: screenServerDetail,
 				title: "Disable " + meta.Name + "?",
 				plan:  fmt.Sprintf("- peer %s (%s)\n  Removed from runtime and persistent config.\n  Local profile and metadata kept, so it can be resumed later.", meta.Name, peerview.ShortenKey(meta.PublicKey)),
 				apply: m.applyDisable(serverID, meta, cc, iface),
 			}
 		case "enable":
 			return planReadyMsg{
-				sess: sess, cancelScreen: screenServerDetail,
+				sess: sess, borrowed: true, cancelScreen: screenServerDetail,
 				title: "Resume " + meta.Name + "?",
 				plan:  fmt.Sprintf("+ peer %s (%s)\n  Restored to persistent config exactly as it was before disabling.", meta.Name, peerview.ShortenKey(meta.PublicKey)),
 				apply: m.applyEnable(serverID, meta, cc, iface),
@@ -243,7 +294,6 @@ func (m *model) startPeerAction(peer peerview.Peer, action string) tea.Cmd {
 		case "rotate":
 			idx := cc.Doc.FindPeerByPublicKey(meta.PublicKey)
 			if idx == -1 {
-				sess.close()
 				return planReadyMsg{err: fmt.Errorf("peer %s not found in the current config (is it disabled?)", peerview.ShortenKey(meta.PublicKey)), cancelScreen: screenServerDetail}
 			}
 			block := cc.Doc.Blocks[idx]
@@ -251,21 +301,20 @@ func (m *model) startPeerAction(peer peerview.Peer, action string) tea.Cmd {
 			keepalive, _ := strconv.Atoi(block.Value("PersistentKeepalive"))
 			withPSK := block.Value("PresharedKey") != ""
 			return planReadyMsg{
-				sess: sess, cancelScreen: screenServerDetail,
+				sess: sess, borrowed: true, cancelScreen: screenServerDetail,
 				title: "Rotate keys for " + meta.Name + "?",
 				plan:  fmt.Sprintf("Rotate %s: a fresh keypair replaces %s on the server.\nThe old local profile is removed.", meta.Name, peerview.ShortenKey(meta.PublicKey)),
 				apply: m.applyRotate(serverID, meta, cc, iface, allowedIPs, keepalive, withPSK),
 			}
 		}
-		sess.close()
 		return errMsg{err: fmt.Errorf("unknown action %q", action)}
-	})
+	}
 }
 
 func (m *model) applyDisable(serverID string, meta profilevault.PeerMetadata, cc peerops.CurrentConfig, iface string) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
 		sess := m.activeSession
-		return m.releaseTerminalAndRun(func() tea.Msg {
+		return func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 			outcome, rawBlock, err := peerops.DisablePeer(ctx, sess.client, sess.prompts, cc, meta.PublicKey)
@@ -285,14 +334,14 @@ func (m *model) applyDisable(serverID string, meta profilevault.PeerMetadata, cc
 				m.peersLoaded = false
 				return nil
 			}}
-		})
+		}
 	}
 }
 
 func (m *model) applyEnable(serverID string, meta profilevault.PeerMetadata, cc peerops.CurrentConfig, iface string) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
 		sess := m.activeSession
-		return m.releaseTerminalAndRun(func() tea.Msg {
+		return func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 			outcome, err := peerops.EnablePeer(ctx, sess.client, sess.prompts, cc, meta.DisabledBlockRaw)
@@ -312,7 +361,7 @@ func (m *model) applyEnable(serverID string, meta profilevault.PeerMetadata, cc 
 				m.peersLoaded = false
 				return nil
 			}}
-		})
+		}
 	}
 }
 
@@ -321,7 +370,7 @@ func (m *model) applyRotate(serverID string, meta profilevault.PeerMetadata, cc 
 		sess := m.activeSession
 		oldProfile, hadProfile := m.vault.GetProfile(serverID, meta.PublicKey)
 		host := m.selected.SSHHostOrAlias
-		return m.releaseTerminalAndRun(func() tea.Msg {
+		return func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 			result, err := peerops.RotatePeer(ctx, sess.client, sess.prompts, cc, meta.PublicKey, meta.Name, allowedIPs, keepalive, withPSK)
@@ -350,7 +399,7 @@ func (m *model) applyRotate(serverID string, meta profilevault.PeerMetadata, cc 
 				m.peersLoaded = false
 				return nil
 			}}
-		})
+		}
 	}
 }
 
@@ -369,32 +418,30 @@ func (m *model) startRevoke(s domain.Server, meta profilevault.PeerMetadata) tea
 			}
 		}
 	}
-	return m.releaseTerminalAndRun(func() tea.Msg {
+	sess := m.detailSession
+	if sess == nil || sess.closed {
+		return func() tea.Msg {
+			return planReadyMsg{err: fmt.Errorf("server session is not connected; return to Overview and press F5"), cancelScreen: screenServerDetail}
+		}
+	}
+	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
-		target := connectingBanner(os.Stdout, s)
-		prompts := newTerminalPrompts(os.Stdout, target)
-		sess, err := dial(ctx, s, prompts)
-		if err != nil {
-			return planReadyMsg{err: fmt.Errorf("connect: %w", err), cancelScreen: screenServerDetail}
-		}
 		iface, err := resolvePeerInterface(ctx, sess, meta.Interface, "")
 		if err != nil {
-			sess.close()
 			return planReadyMsg{err: err, cancelScreen: screenServerDetail}
 		}
-		cc, err := peerops.FetchCurrentConfig(ctx, sess.client, prompts, iface)
+		cc, err := peerops.FetchCurrentConfig(ctx, sess.client, sess.prompts, iface)
 		if err != nil {
-			sess.close()
 			return planReadyMsg{err: err, cancelScreen: screenServerDetail}
 		}
 		return planReadyMsg{
-			sess: sess, cancelScreen: screenServerDetail,
+			sess: sess, borrowed: true, cancelScreen: screenServerDetail,
 			title:     "Revoke " + meta.Name,
 			multiStep: true,
 			apply:     m.applyRevoke(s.ID, meta, sess, cc),
 		}
-	})
+	}
 }
 
 func (m *model) applyRevoke(serverID string, meta profilevault.PeerMetadata, sess *session, cc peerops.CurrentConfig) func(*model) tea.Cmd {
@@ -402,7 +449,7 @@ func (m *model) applyRevoke(serverID string, meta profilevault.PeerMetadata, ses
 		deleteProfile := m.revokeDeleteProfile
 		deleteMetadata := m.revokeDeleteMetadata
 		revokeAccess := m.revokeYes
-		return m.releaseTerminalAndRun(func() tea.Msg {
+		return func() tea.Msg {
 			var backupPath string
 			if revokeAccess && sess != nil {
 				ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -432,7 +479,7 @@ func (m *model) applyRevoke(serverID string, meta profilevault.PeerMetadata, ses
 				m.peersLoaded = false
 				return nil
 			}}
-		})
+		}
 	}
 }
 

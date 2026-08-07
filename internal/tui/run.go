@@ -21,6 +21,9 @@ func Run() error {
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	m.program = p
 
-	_, err = p.Run()
+	final, err := p.Run()
+	if fm, ok := final.(*model); ok {
+		fm.closeSessions()
+	}
 	return err
 }
