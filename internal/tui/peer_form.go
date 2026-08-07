@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/peerops"
 	"github.com/DMYTROSKORIN/wgtui/internal/peerview"
@@ -200,8 +201,10 @@ func (m *model) applyPeerAdd(p peerAddParams) func(*model) tea.Cmd {
 				m.revealName = p.name
 				m.revealProfile = clientConf
 				m.revealMode = ""
+				m.revealCursor = 0
+				m.revealNew = true
 				m.screen = screenPeerReveal
-				m.setStatus("Added " + p.name + ". Client profile saved in the encrypted vault.")
+				m.clearStatus()
 				return m.loadPeersFromSessionCmd()
 			}}
 		}
@@ -213,18 +216,67 @@ func (m *model) applyPeerAdd(p peerAddParams) func(*model) tea.Cmd {
 // user has to explicitly ask, same as the CLI's --show/--qr flags, just
 // as an in-place choice instead of an upfront one.
 func (m *model) updatePeerReveal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.revealMode != "" {
+		switch msg.String() {
+		case "esc", "q", "enter":
+			m.revealMode = ""
+			if !m.revealNew {
+				m.screen = screenServerDetail
+			}
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
-	case "ctrl+c":
-		return m, tea.Quit
+	case "up", "k":
+		if m.revealCursor > 0 {
+			m.revealCursor--
+		}
+	case "down", "j":
+		if m.revealCursor < len(clientSetupChoices)-1 {
+			m.revealCursor++
+		}
 	case "s":
-		m.revealMode = "text"
+		return m.chooseClientSetup("text")
 	case "g", "Q":
-		m.revealMode = "qr"
+		return m.chooseClientSetup("qr")
 	case "e":
+		return m.chooseClientSetup("export")
+	case "enter":
+		if m.revealCursor >= 0 && m.revealCursor < len(clientSetupChoices) {
+			return m.chooseClientSetup(clientSetupChoices[m.revealCursor].value)
+		}
+	case "q", "esc":
+		m.revealMode = ""
+		m.revealNew = false
+		m.screen = screenServerDetail
+	}
+	return m, nil
+}
+
+type clientSetupChoice struct {
+	label       string
+	description string
+	value       string
+}
+
+var clientSetupChoices = []clientSetupChoice{
+	{"Show QR code", "Scan it in the WireGuard app on a phone or tablet.", "qr"},
+	{"Export profile + QR", "Create a private bundle for a desktop or another device.", "export"},
+	{"Show configuration text", "Advanced: display the secret .conf in this terminal.", "text"},
+	{"Finish for now", "Keep the profile encrypted in the local vault.", "done"},
+}
+
+func (m *model) chooseClientSetup(action string) (tea.Model, tea.Cmd) {
+	switch action {
+	case "qr", "text":
+		m.revealMode = action
+	case "export":
 		m.selectedPeer = peerview.Peer{Name: m.revealName}
 		return m.startExportForm()
-	case "enter", "q", "esc":
+	case "done":
 		m.revealMode = ""
+		m.revealNew = false
 		m.screen = screenServerDetail
 	}
 	return m, nil
@@ -232,25 +284,57 @@ func (m *model) updatePeerReveal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *model) viewPeerReveal() string {
 	var b strings.Builder
-	b.WriteString(accentHeadingStyle.Render("Client profile: "+m.revealName) + "\n\n")
 
 	switch m.revealMode {
 	case "text":
+		b.WriteString(accentHeadingStyle.Render("Configuration: "+m.revealName) + "\n\n")
 		b.WriteString(dangerStyle.Render("WARNING: this is a secret client profile - do not paste it anywhere untrusted.") + "\n\n")
 		b.WriteString(m.revealProfile)
 	case "qr":
+		b.WriteString(accentHeadingStyle.Render("Scan QR: "+m.revealName) + "\n\n")
 		art, err := peerops.RenderQRTerminal(m.revealProfile)
 		if err != nil {
 			b.WriteString(dangerStyle.Render("render QR: " + err.Error()))
+		} else if lipgloss.Height(art)+8 > m.height {
+			b.WriteString(warningStyle.Render("The terminal is not tall enough to show this QR code safely.") + "\n\n")
+			b.WriteString(textStyle.Render("Increase the terminal height or press Esc and export the profile + QR bundle instead."))
 		} else {
 			b.WriteString(dangerStyle.Render("WARNING: this QR code encodes the client's private key - it is a secret.") + "\n\n")
 			b.WriteString(art)
 		}
 	default:
-		b.WriteString(textStyle.Render("The client profile is saved in the local vault.") + "\n")
-		b.WriteString(dimStyle.Render("A fresh handshake from the client is the only real proof it works - this doesn't wait for one."))
+		compact := layoutModeFor(m.width, m.height) == layoutCompact
+		b.WriteString(successStyle.Render("✓ Peer “"+terminalText(m.revealName)+"” is ready") + "\n")
+		if compact {
+			b.WriteString(textStyle.Render("Next: import its profile into the WireGuard client.") + "\n")
+			b.WriteString(accentHeadingStyle.Render("Choose how to configure the client:") + "\n")
+		} else {
+			b.WriteString("\n" + textStyle.Render("Next: import its profile into the WireGuard app on the client device.") + "\n")
+			b.WriteString(dimStyle.Render("The profile is encrypted in the local vault until you choose how to transfer it.") + "\n\n")
+			b.WriteString(accentHeadingStyle.Render("How do you want to configure the client?") + "\n\n")
+		}
+		for i, choice := range clientSetupChoices {
+			prefix := "  "
+			style := textStyle
+			if i == m.revealCursor {
+				prefix = "› "
+				style = menuSelectedStyle
+			}
+			b.WriteString(style.Render(prefix + choice.label))
+			if compact {
+				b.WriteString("\n")
+			} else {
+				b.WriteString("\n  " + dimStyle.Render(choice.description) + "\n")
+			}
+		}
+		if !compact {
+			b.WriteString("\n" + dimStyle.Render("A fresh client handshake is the final proof that the connection works."))
+		}
 	}
 
-	return appHeader(m.selected.DisplayName+" / "+m.revealName) + "\n" + fullPanel(m, b.String()) + "\n" +
-		keyBar("s Show config", "g Show QR", "e Save profile+QR", "Enter Done", "Ctrl+C Quit")
+	footer := keyBar(m.width, "↑/↓ Select", "Enter Continue", "Esc Finish", "Ctrl+C Quit")
+	if m.revealMode != "" {
+		footer = keyBar(m.width, "Esc Back", "Enter Back", "Ctrl+C Quit")
+	}
+	return appHeader(m.selected.DisplayName+" / "+m.revealName) + "\n" + fullPanel(m, b.String()) + "\n" + footer
 }

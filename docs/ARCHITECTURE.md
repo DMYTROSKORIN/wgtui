@@ -218,11 +218,17 @@ Both are thin front ends over one shared, structured request/response API (spec 
 behavior cannot drift between the two. Command surface for `cli` is spec §21; screens for
 `tui` are spec §20.
 
-The TUI removes the server sidebar after a server is opened and has three responsive
-peer-table tiers: compact columns on narrow terminals, a full-width table plus compact
-selection card on normal terminals, and Peers/Selected peer panels on wide terminals.
-Column priority is derived from actual panel width, and every cell is display-width
-truncated before rendering so a long value cannot create a second visual row.
+The TUI has four explicit layout states: a below-minimum guard (`64×18`), compact,
+standard and wide. Wide mode requires sufficient height as well as width, preventing a
+short-but-wide terminal from selecting an inspector it cannot display. The server sidebar
+is removed after a server is opened; compact mode shows one task at a time, standard mode
+uses a full-width peer table plus selection card, and wide mode uses Peers/Selected peer
+panels. Column priority is derived from actual panel width, every cell is display-width
+truncated, diagnostics have a bounded scroll window, and shrinking/cross-breakpoint resize
+events request a full renderer clear so stale rows cannot survive a layout change.
+Post-create client setup is an explicit choice (QR, private bundle export, secret text, or
+finish), not a footer-only set of undocumented next steps. Semantic state colors always
+retain a text label/symbol and therefore are not required to understand the interface.
 `peerops.DefaultDNS` is the shared client-profile DNS default used by TUI, CLI and MCP.
 Explicit TUI export creates a user-home bundle directory containing the `.conf` and a
 locally rendered QR PNG, with directory `0700` and both secret files `0600`.

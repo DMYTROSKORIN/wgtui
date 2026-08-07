@@ -3,7 +3,7 @@
 Terminal UI and CLI for managing one or more remote WireGuard servers over plain SSH —
 no agent, no web UI, no extra open port on the server.
 
-> **Status: private preview.** The TUI, CLI, MCP front end, encrypted local
+> **Status: stable personal release.** The TUI, CLI, MCP front end, encrypted local
 > vault, discovery, setup and peer lifecycle are implemented. See
 > [`docs/SPEC.md`](docs/SPEC.md) for requirements, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 > for internals and [`docs/TUI.md`](docs/TUI.md) for the terminal workflow.
@@ -75,7 +75,10 @@ Running `wgtui` without arguments opens the full-screen dashboard. The master
 password is requested once before the dashboard starts. Inside the app, `?`
 shows keyboard help, `r` refreshes network state, `Esc` goes back, and
 `Ctrl+C` exits safely from every screen. Function keys are optional aliases,
-never required.
+never required. The minimum interactive terminal size is `64×18`; `90×24` or
+larger is recommended. The interface switches between compact, standard and
+wide layouts automatically and preserves the current screen while the terminal
+is temporarily too small.
 
 <details>
 <summary>Installing a release</summary>

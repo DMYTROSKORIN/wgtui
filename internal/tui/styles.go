@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	bkey "github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
@@ -15,6 +17,7 @@ var (
 	colorWarning   = lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FBBF24"}
 	colorAccent    = lipgloss.AdaptiveColor{Light: "#0369A1", Dark: "#38BDF8"}
 	colorHighlight = lipgloss.AdaptiveColor{Light: "#6D28D9", Dark: "#C084FC"}
+	colorSelection = lipgloss.AdaptiveColor{Light: "#EDE9FE", Dark: "#312E81"}
 	colorText      = lipgloss.AdaptiveColor{Light: "#111827", Dark: "#E5E7EB"}
 	colorMuted     = lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}
 )
@@ -30,7 +33,7 @@ var (
 	dangerStyle   = lipgloss.NewStyle().Bold(true).Foreground(colorDanger)
 
 	accentHeadingStyle  = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	menuSelectedStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(colorHighlight).Padding(0, 1)
+	menuSelectedStyle   = lipgloss.NewStyle().Bold(true).Foreground(colorText).Background(colorSelection).Padding(0, 1)
 	dangerSelectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(colorDanger).Padding(0, 1)
 
 	panelStyle = lipgloss.NewStyle().
@@ -42,6 +45,7 @@ var (
 	tabInactiveStyle = lipgloss.NewStyle().Foreground(colorMuted)
 
 	footerStyle = lipgloss.NewStyle().Foreground(colorMuted)
+	keyStyle    = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
 )
 
 // formTheme is the one huh.Theme every form/confirm/select in the app
@@ -82,7 +86,7 @@ func formKeyMap() *huh.KeyMap {
 // state always reads the same way everywhere (peer list, diagnose
 // checklist, server connection state).
 func badge(style lipgloss.Style, symbol, label string) string {
-	return style.Render(symbol+" ") + label
+	return style.Render(symbol + " " + label)
 }
 
 // peerStateBadge covers peerview.Peer.State's actual values (mirrors
@@ -98,7 +102,9 @@ func peerStateBadge(state string) string {
 		return badge(dangerStyle, "●", state)
 	case "never_connected":
 		return badge(dimStyle, "○", "never")
-	case "idle", "unmanaged":
+	case "unmanaged":
+		return badge(warningStyle, "○", state)
+	case "idle":
 		return badge(dimStyle, "○", state)
 	default:
 		return badge(dimStyle, "○", state)
@@ -117,4 +123,28 @@ func checkStatusBadge(status string) string {
 	default:
 		return badge(dimStyle, "-", "skip")
 	}
+}
+
+// serverStateBadge gives discovery's high-level state the same visual
+// vocabulary as peer and diagnostic state without coupling styles.go to the
+// discovery package.
+func serverStateBadge(state string) string {
+	label := strings.ReplaceAll(state, "_", " ")
+	switch state {
+	case "active_consistent":
+		return badge(successStyle, "●", label)
+	case "wireguard_missing", "tools_no_interfaces", "config_exists_stopped":
+		return badge(warningStyle, "●", label)
+	case "drift", "ambiguous", "insufficient_privileges":
+		return badge(dangerStyle, "●", label)
+	default:
+		return badge(dimStyle, "○", orDefault(label, "unknown"))
+	}
+}
+
+func boolStatus(value bool, yes, no string) string {
+	if value {
+		return successStyle.Render("✓ " + yes)
+	}
+	return warningStyle.Render("○ " + no)
 }

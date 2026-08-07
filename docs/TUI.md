@@ -28,8 +28,15 @@ content with a fresh salt. A failed write leaves the old vault usable.
 
 ## Layout
 
-- Server manager: server list on the left, selected connection details on the
-  right.
+- `64×18` is the supported minimum and `90×24` is recommended. Below the
+  minimum, wgtui replaces the active UI with a size message and ignores input
+  other than resize and global quit; the current screen and data are preserved.
+- Compact mode uses one task at a time: a single-panel server list, a reduced
+  overview, priority peer columns and concise action bars. Standard mode adds
+  selected-peer context. Wide mode is enabled only when both width and height
+  can hold the peer table and inspector.
+- Server manager: server list on the left and selected connection details on
+  the right in standard/wide mode; compact mode uses a single panel.
 - Once a server is open, its name and connection state move into the header; the
   redundant Servers sidebar disappears. `Esc` returns to the server manager.
 - Narrow terminals show a compact Peer / State / Last seen table. Medium terminals
@@ -46,10 +53,22 @@ content with a fresh salt. A failed write leaves the old vault usable.
   List selection moves a fixed cursor; rows do not rotate or jump when navigating.
 - Peer changes immediately reload the Peers view. A visible activity line distinguishes
   loading/refreshing from an idle screen.
+- After creating a peer, wgtui asks how to configure the client instead of
+  leaving the user at an informational screen. The choices are QR for a phone,
+  a private profile+QR export bundle for another device, configuration text for
+  advanced use, or finishing with the profile kept in the encrypted vault.
 - Every managed peer whose encrypted profile is available has `Show QR code` and
   `Save profile + QR bundle` actions. A `DimaOffice_WireGuard` directory (`0700`)
   contains `DimaOffice.conf` and `DimaOffice_QR.png` (`0600`). Existing bundles are
   never overwritten; both files are secrets because both encode the private key.
+- Color is semantic and never the only signal: cyan identifies navigation and
+  focused structure, purple marks selection, green means connected/success,
+  yellow means attention or unmanaged/read-only state, red means error/danger/
+  secret exposure, and muted gray is secondary context. Symbols and labels
+  remain present for monochrome and low-color terminals.
+- Resize events that shrink the terminal or cross a layout breakpoint force a
+  full redraw, preventing stale borders and duplicated action bars. Diagnostic
+  results scroll inside the available panel instead of overflowing it.
 
 ## Client DNS default
 
@@ -65,7 +84,7 @@ existing profile's DNS and supplies the Google default when the old profile had 
 | --- | --- |
 | `?` | Show keyboard help from dashboard and peer screens |
 | `n` | Add a server or peer in the current context |
-| `e` | Edit the selected server; save an available peer profile from its reveal screen |
+| `e` | Edit the selected server; shortcut to export from the new-client setup screen |
 | `r` | Explicitly refresh the active view |
 | `Enter` | Open the selected server or peer actions |
 | `Tab` | Switch dashboard tabs; never request credentials by itself |
@@ -93,8 +112,11 @@ Protocol reference: <https://www.wireguard.com/protocol/>.
 
 Automated tests cover global quit from every screen, session cleanup, Tab using
 the existing connection, borrowed-session survival across confirmation,
-responsive dashboard rendering, keyboard help, peer readability, atomic vault
-password rotation, stable action cursors, portable vault migration, and preservation
-of encrypted data. Network mutations remain
+responsive rendering at every width from 64 through 180 across short/normal/tall
+terminals, shrink and breakpoint redraws, tiny-terminal fallbacks, diagnostic
+scrolling, post-create client setup, QR height safety, keyboard help, peer
+readability, terminal-control sanitization fuzzing, export-path fuzzing, atomic
+vault password rotation, stable action cursors, portable vault migration, and
+preservation of encrypted data. Network mutations remain
 covered by the transaction and peer-operation tests; final compatibility checks
 must use a disposable WireGuard test server, never a production target.

@@ -155,6 +155,9 @@ type model struct {
 	revealProfile  string
 	revealName     string
 	revealMode     string
+	revealCursor   int
+	revealNew      bool
+	exportReturn   screen
 
 	// configure wizard form
 	cfForm              *huh.Form
@@ -167,9 +170,10 @@ type model struct {
 	cfDetectedOutbound  string
 
 	// diagnose tab
-	checks       []diagnostics.Check
-	checksLoaded bool
-	checksErr    string
+	checks         []diagnostics.Check
+	checksLoaded   bool
+	checksErr      string
+	diagnoseOffset int
 }
 
 func newModel(v *profilevault.Vault, vaultPath string) *model {
@@ -183,10 +187,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// screen or huh form sees the key; huh normally treats Ctrl+C as a
 	// local form abort, which made quitting depend on the active screen.
 	if key, ok := msg.(tea.KeyMsg); ok {
-		switch key.String() {
-		case "ctrl+c", "f10":
+		if key.String() == "ctrl+c" || key.String() == "f10" {
 			m.closeSessions()
 			return m, tea.Quit
+		}
+		if terminalTooSmall(m.width, m.height) {
+			// Keep the underlying screen stable while the terminal is unusably
+			// small. Non-key messages (including completed network operations)
+			// still flow through the state machine below.
+			return m, nil
+		}
+		switch key.String() {
 		case "f1":
 			if m.screen != screenHelp {
 				m.helpReturn = m.screen
@@ -202,13 +213,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		oldWidth, oldHeight := m.width, m.height
+		oldMode := layoutModeFor(m.width, m.height)
 		m.width, m.height = size.Width, size.Height
 		if m.peersLoaded {
 			m.rebuildPeerTable()
 		}
+		// Terminal emulators do not all erase rows that disappeared after a
+		// resize. A full clear on breakpoint changes prevents stale borders and
+		// duplicated footers without flickering during ordinary updates.
+		if oldMode != layoutModeFor(m.width, m.height) || size.Width < oldWidth || size.Height < oldHeight {
+			return m, tea.ClearScreen
+		}
 		return m, nil
 	}
-
 	switch msg := msg.(type) {
 	case discoveryMsg:
 		m.loading = false
@@ -419,6 +437,7 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "tab":
 		m.tab = (m.tab + 1) % 3
+		m.diagnoseOffset = 0
 		if m.tab == tabPeers && !m.peersLoaded {
 			return m, m.loadPeersFromSessionCmd()
 		}
@@ -434,6 +453,7 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case tabDiagnose:
 			m.checks = diagnostics.BuildChecks(m.report, m.vault.ListPeers(m.selected.ID), time.Now())
 			m.checksLoaded = true
+			m.diagnoseOffset = 0
 			return m, nil
 		default:
 			if m.loading {
@@ -460,6 +480,19 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.tab == tabPeers {
 			return m.openActionMenu()
 		}
+	}
+	if m.tab == tabDiagnose {
+		switch msg.String() {
+		case "up", "k":
+			if m.diagnoseOffset > 0 {
+				m.diagnoseOffset--
+			}
+		case "down", "j":
+			if m.diagnoseOffset < max(0, len(m.diagnoseLines())-m.diagnoseVisibleRows()) {
+				m.diagnoseOffset++
+			}
+		}
+		return m, nil
 	}
 	if m.tab == tabPeers {
 		var cmd tea.Cmd

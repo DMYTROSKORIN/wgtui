@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/domain"
 	"github.com/DMYTROSKORIN/wgtui/internal/peerops"
@@ -69,11 +70,17 @@ func (m *model) rebuildPeerTable() {
 	}
 	rows := make([]table.Row, 0, len(m.peers))
 	for _, p := range m.peers {
-		values := []string{peerTableLabel(p)}
+		name := truncateCell(peerTableLabel(p), cols[0].Width)
+		if p.Managed {
+			name = textStyle.Render(name)
+		} else {
+			name = warningStyle.Render(name)
+		}
+		values := []string{name}
 		if mode != "compact" {
 			values = append(values, orDefault(terminalText(p.VPNIP), "-"))
 		}
-		values = append(values, stateLabel(p), formatHandshakeAge(p.LatestHandshakeSeconds))
+		values = append(values, peerStateBadge(p.State), dimStyle.Render(formatHandshakeAge(p.LatestHandshakeSeconds)))
 		if mode == "extended" {
 			values = append(values, orDefault(terminalText(p.Endpoint), "-"))
 		}
@@ -82,17 +89,20 @@ func (m *model) rebuildPeerTable() {
 		}
 		row := make(table.Row, len(values))
 		for i, value := range values {
-			row[i] = truncateCell(value, cols[i].Width)
+			if lipgloss.Width(value) > cols[i].Width {
+				value = truncateCell(ansi.Strip(value), cols[i].Width)
+			}
+			row[i] = value
 		}
 		rows = append(rows, row)
 	}
 
 	styles := table.DefaultStyles()
 	styles.Header = styles.Header.Foreground(colorMuted).Bold(true)
-	styles.Selected = styles.Selected.Foreground(colorHighlight).Bold(true)
+	styles.Selected = styles.Selected.Bold(true).Background(colorSelection)
 
 	tableHeight := min(max(3, len(rows)+1), max(5, m.height-16))
-	if m.width >= 135 {
+	if layoutModeFor(m.width, m.height) == layoutWide {
 		tableHeight = max(5, m.height-12)
 	}
 	m.peerTable = table.New(
@@ -144,7 +154,7 @@ func terminalText(value string) string {
 }
 
 func (m *model) peerTableAvailableWidth() int {
-	if m.width >= 135 {
+	if layoutModeFor(m.width, m.height) == layoutWide {
 		peersWidth, _ := peerSplitPanelWidths(m.width)
 		return max(48, peersWidth-4)
 	}
@@ -159,7 +169,7 @@ func peerSplitPanelWidths(total int) (peers, inspector int) {
 
 func (m *model) viewPeersTab() string {
 	list := m.viewPeerList()
-	if m.width >= 90 && m.width < 135 && m.peersLoaded && m.peersErr == "" && len(m.peers) > 0 {
+	if layoutModeFor(m.width, m.height) == layoutStandard && m.peersLoaded && m.peersErr == "" && len(m.peers) > 0 {
 		list += "\n\n" + m.viewSelectedPeerCard()
 	}
 	return list
@@ -199,21 +209,6 @@ func formatHandshakeAge(seconds *int64) string {
 	}
 }
 
-func stateLabel(p peerview.Peer) string {
-	switch p.State {
-	case "online":
-		return "● online"
-	case "disabled":
-		return "◼ disabled"
-	case "drifted", "error":
-		return "! " + p.State
-	case "never_connected":
-		return "○ never"
-	default:
-		return "○ " + strings.ReplaceAll(p.State, "_", " ")
-	}
-}
-
 func formatBytes(n int64) string {
 	const unit = 1024
 	if n < unit {
@@ -247,8 +242,10 @@ func (m *model) viewSelectedPeerCard() string {
 	}
 	p := m.peers[row]
 	managed := "unmanaged (read-only)"
+	managedStyle := warningStyle
 	if p.Managed {
 		managed = "managed by wgtui"
+		managedStyle = successStyle
 	}
 	profile := "not available"
 	if p.ProfileAvailable {
@@ -260,7 +257,7 @@ func (m *model) viewSelectedPeerCard() string {
 		dimStyle.Render("Interface  ") + textStyle.Render(orDefault(terminalText(p.Interface), "-")) + "   " +
 		dimStyle.Render("Public key  ") + textStyle.Render(terminalText(peerview.ShortenKey(p.PublicKey))) + "\n" +
 		dimStyle.Render("Profile    ") + textStyle.Render(profile) +
-		"\n" + dimStyle.Render(managed+" · Enter opens available actions")
+		"\n" + managedStyle.Render(managed) + dimStyle.Render(" · Enter opens available actions")
 }
 
 func (m *model) viewSelectedPeerInspector() string {
@@ -280,8 +277,10 @@ func (m *model) viewSelectedPeerInspector() string {
 		profile = "Encrypted in local vault"
 	}
 	ownership := "Unmanaged · read-only"
+	ownershipStyle := warningStyle
 	if p.Managed {
 		ownership = "Managed by wgtui"
+		ownershipStyle = successStyle
 	}
 	psk := "No"
 	if p.State == "disabled" {
@@ -302,7 +301,7 @@ func (m *model) viewSelectedPeerInspector() string {
 		dimStyle.Render("Public key") + "\n" + textStyle.Render(wrapPlainText(p.PublicKey, contentWidth, 2)) + "\n" +
 		inspectorLine("Preshared key", psk, contentWidth) + "\n" +
 		inspectorLine("Client profile", profile, contentWidth) + "\n" +
-		dimStyle.Render(ownership) + "\n\n" +
+		ownershipStyle.Render(ownership) + "\n\n" +
 		dimStyle.Render("Enter opens actions · r refreshes")
 }
 
@@ -310,7 +309,7 @@ func inspectorLine(label, value string, width int) string {
 	const labelWidth = 16
 	label = truncateCell(label, labelWidth-1)
 	value = truncateCell(value, max(8, width-labelWidth))
-	return dimStyle.Copy().Width(labelWidth).Render(label) + textStyle.Render(value)
+	return dimStyle.Width(labelWidth).Render(label) + textStyle.Render(value)
 }
 
 func wrapPlainText(value string, width, maxLines int) string {
@@ -325,9 +324,7 @@ func wrapPlainText(value string, width, maxLines int) string {
 			break
 		}
 		part := truncateCell(value, width)
-		if strings.HasSuffix(part, "…") {
-			part = strings.TrimSuffix(part, "…")
-		}
+		part = strings.TrimSuffix(part, "…")
 		if part == "" {
 			break
 		}
@@ -493,7 +490,7 @@ func (m *model) viewActionMenu() string {
 		menu.String()
 	return appHeader(m.selected.DisplayName+" / Peers") + "\n" +
 		fullPanel(m, card) + "\n" +
-		keyBar("↑/↓ Select", "Enter Continue", "Esc Back", "Ctrl+C Quit")
+		keyBar(m.width, "↑/↓ Select", "Enter Continue", "Esc Back", "Ctrl+C Quit")
 }
 
 func (m *model) showStoredProfile(mode string) {
@@ -508,6 +505,7 @@ func (m *model) showStoredProfile(mode string) {
 		return
 	}
 	m.revealName, m.revealProfile, m.revealMode = meta.Name, profile, mode
+	m.revealNew = false
 	m.screen = screenPeerReveal
 }
 
@@ -794,6 +792,10 @@ func (m *model) viewRevokeConfirm() string {
 }
 
 func (m *model) startExportForm() (tea.Model, tea.Cmd) {
+	m.exportReturn = screenServerDetail
+	if m.screen == screenPeerReveal {
+		m.exportReturn = screenPeerReveal
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		m.setError(fmt.Errorf("resolve home directory: %w", err))
@@ -827,16 +829,20 @@ func (m *model) updateExportForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch m.exportForm.State {
 	case huh.StateCompleted:
-		m.screen = screenServerDetail
+		m.screen = m.exportReturn
 		home, err := os.UserHomeDir()
 		if err != nil {
 			m.setError(err)
 			return m, nil
 		}
 		m.exportPeerBundle(filepath.Join(home, m.exportPath))
+		if m.exportReturn == screenPeerReveal && !m.statusErr {
+			m.revealMode = ""
+			m.revealCursor = len(clientSetupChoices) - 1
+		}
 		return m, nil
 	case huh.StateAborted:
-		m.screen = screenServerDetail
+		m.screen = m.exportReturn
 		return m, nil
 	}
 	return m, cmd

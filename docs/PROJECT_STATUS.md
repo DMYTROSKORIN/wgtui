@@ -1,50 +1,75 @@
 # Project checkpoint
 
-Last updated: 2026-08-07 22:31 CEST  
-Active branch: `feat/tui-usability-overhaul`  
-Last functional commit: `f7a64d2` (`adapt peer layout and export QR bundles`)
+Last updated: 2026-08-08 00:43 CEST
+
+Active branch: `feat/tui-usability-overhaul`
+
+Release target: `v0.2.0`
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
 
-## Completed
+## Completed in the current release cycle
 
-- The TUI usability overhaul is implemented and pushed to the feature branch.
-- The dashboard, vault-password settings, peer workflow, wide peer layout,
-  default client DNS, secure portable export, and QR export bundle are in place.
-- Documentation and automated tests were updated with the implementation.
-- `go test ./...` passed on 2026-08-07.
-- A stripped development build from `f7a64d2` was installed locally at
-  `~/.local/bin/wgtui`, together with the man page and shell completions.
-- Installed binary version: `0.0.0-dev`.
-- Installed binary SHA-256:
-  `80cbd96e93f3ae5ceb149fa329166ff38369bcf57dff5a0663feb9263e5089dd`.
+- Replaced the ambiguous post-peer-creation screen with an explicit client
+  setup menu: QR, private profile+QR export, secret config text, or finish.
+- Added four layout modes: below-minimum guard, compact, standard, and wide.
+  Minimum is `64×18`; recommended size is `90×24`.
+- Wide mode now requires adequate height as well as width. Short wide terminals
+  fall back to the compact single-panel layout instead of overflowing.
+- Shrinking a terminal or crossing a breakpoint requests a full renderer clear,
+  preventing duplicated footers and stale borders.
+- Added bounded diagnostic scrolling, deterministic interface ordering,
+  many-interface summaries, QR height safety, compact help/overview screens,
+  tiny-terminal fallback, and ANSI-safe status/footer truncation.
+- Applied semantic colors across navigation, selection, connection/success,
+  unmanaged/attention, error/danger, values, and secondary context. Every color
+  retains a text label or symbol.
+- Strengthened CI and release workflows with race tests, Staticcheck and
+  govulncheck. Added `CHANGELOG.md` to release archives.
+- Updated README, TUI and architecture documentation for the new contract.
+
+## Test and packaging evidence
+
+- `go test ./...`: pass.
+- `go test -race ./...`: pass.
+- `go vet ./...`: pass.
+- Staticcheck `v0.7.0`: pass after fixing all findings.
+- govulncheck `v1.6.0`: 0 called/package vulnerabilities. It reports only the
+  unmaintained `x/crypto/openpgp` package at module level; wgtui does not import
+  or call it.
+- Semgrep: last clean before this change set; rerun before commit/push.
+- Fuzzing: about 305k terminal-text/truncation inputs and 1.25M export-name
+  inputs, no failures.
+- Responsive property tests cover every width `64..180` over eight terminal
+  heights, plus tiny sizes below the supported minimum.
+- GoReleaser `v2.17.1` configuration check: pass.
+- GoReleaser snapshot: pass for Linux/macOS amd64/arm64, producing four archives,
+  four Linux packages and valid checksums. Archives contain the binary, license,
+  README, changelog, man page and three shell completions.
+- actionlint `v1.7.12`: pass for CI and release workflows.
 
 ## Resume here
 
-The next task is a manual smoke test of the current full-screen TUI in a real
-terminal against the already configured WireGuard server. Concentrate on:
+1. Run the final clean-tree gate: formatting/diff check, unit tests, race,
+   vet, Staticcheck, govulncheck, Semgrep, actionlint and GoReleaser check.
+2. Commit the product changes and this checkpoint; push the feature branch.
+3. Open a PR to `master`, wait for every CI job and address any failure.
+4. Merge the PR and verify the `master` push CI.
+5. Tag the merge commit `v0.2.0` and push the tag.
+6. Wait for the Release workflow and verify all `.tar.gz`, `.deb`, `.rpm` and
+   checksum assets plus their embedded `wgtui 0.2.0` version.
+7. Install the published release with `scripts/install.sh v0.2.0`, verify the
+   local version, and update this file with the final release result.
 
-1. dashboard layout at narrow and wide terminal sizes;
-2. opening the peer list and moving between peers;
-3. add-peer form defaults, especially DNS;
-4. peer details and QR display/export bundle;
-5. pause/resume/rotate/revoke confirmations and cancellation paths;
-6. returning between screens and exiting with `Ctrl+C` without corrupting the
-   terminal.
+## Publishing note
 
-Do not repeat the completed redesign unless the smoke test finds a regression.
-Record every discovered issue here or in a commit before ending the session.
-
-## Remaining plan
-
-- [ ] Run the manual TUI smoke test described above.
-- [ ] Fix and test any regressions found during the smoke test.
-- [ ] Run `go test ./...`, `go build ./...`, and `scripts/semgrep-scan.sh`.
-- [ ] Push the final feature branch and verify its CI checks.
-- [ ] Merge the feature branch into `master` when the smoke test and CI are clean.
-- [ ] Create and locally install a tagged release if a release is wanted.
+`git push` works over the configured SSH remote. At this checkpoint,
+`gh auth status` reports that the stored GitHub API token is invalid. Prefer the
+connected GitHub app for PR creation/inspection; if connector coverage is not
+available, re-authentication with `gh auth login -h github.com` is the only
+remaining user-dependent step.
 
 ## Useful commands
 
@@ -53,6 +78,7 @@ cd /home/skorin/Git/wgtui
 git status --short --branch
 git log -5 --oneline
 go test ./...
-go build ./...
-~/.local/bin/wgtui version
+go test -race ./...
+go vet ./...
+~/.local/bin/goreleaser check
 ```
