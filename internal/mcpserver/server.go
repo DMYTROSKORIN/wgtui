@@ -20,8 +20,9 @@ import (
 
 // Version mirrors internal/cli's placeholder - see that package's doc
 // comment for why each front end carries its own rather than importing
-// one another for it.
-const Version = "0.0.0-dev"
+// one another for it. A var, not a const, so -ldflags -X can override it
+// at release-build time (.goreleaser.yaml).
+var Version = "0.0.0-dev"
 
 // Server bundles the already-unlocked vault every tool handler needs.
 // Vault unlock happens once, before New is called - see run.go.

@@ -4,13 +4,19 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"time"
+
+	"github.com/DMYTROSKORIN/wgtui/internal/update"
 )
 
-// Version is overridden at release-build time (Stage 5 concern; see
-// docs/SPEC.md §28 Stage 5). Development builds report this placeholder.
-const Version = "0.0.0-dev"
+// Version is overridden at release-build time via -ldflags -X (see
+// .goreleaser.yaml and docs/SPEC.md §28 Stage 5) - a var, not a const,
+// because -X only rewrites package-level string variables. Development
+// builds (plain `go build`) report this placeholder.
+var Version = "0.0.0-dev"
 
 // Run is the CLI entry point. It returns a process exit code: 0 on
 // success, 1 on a runtime failure (connection error, remote command
@@ -27,9 +33,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runPeer(args[1:], stdout, stderr)
 	case "diagnose":
 		return runDiagnose(args[1:], stdout, stderr)
+	case "completion":
+		return runCompletion(args[1:], stdout, stderr)
 	case "version", "--version":
-		fmt.Fprintln(stdout, "wgtui "+Version)
-		return 0
+		return runVersion(stdout)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return 0
@@ -38,6 +45,24 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		printUsage(stderr)
 		return 2
 	}
+}
+
+// runVersion prints the running version and, on a best-effort basis,
+// whether a newer release exists. This is the "update-available
+// notification, no auto-update" requirement (spec §28, Stage 5): purely
+// informational, never downloads or installs anything, and the check is
+// silently skipped on any network failure - `wgtui version` must never
+// fail or hang just because GitHub is unreachable.
+func runVersion(stdout io.Writer) int {
+	fmt.Fprintln(stdout, "wgtui "+Version)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	info, err := (update.Checker{}).Check(ctx, Version)
+	if err == nil && info.Available {
+		fmt.Fprintf(stdout, "A newer version is available: %s (you have %s)\n%s\n", info.Latest, Version, info.URL)
+	}
+	return 0
 }
 
 func printUsage(w io.Writer) {
@@ -60,6 +85,7 @@ Usage:
   wgtui peer import <id> --file <path> --name <name> [--interface <if>]
   wgtui diagnose <id> [--json]
   wgtui mcp                    run as an MCP server over stdio, for AI agent front ends (see docs/ARCHITECTURE.md)
+  wgtui completion <bash|zsh|fish>
   wgtui version
 
 Every command that reaches the network prompts interactively for the SSH

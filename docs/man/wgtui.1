@@ -1,0 +1,97 @@
+.TH WGTUI 1 "2026" "wgtui" "User Commands"
+.SH NAME
+wgtui \- manage remote WireGuard servers over SSH
+.SH SYNOPSIS
+.B wgtui
+.RI [ command " [" args ... ]]
+.SH DESCRIPTION
+.B wgtui
+is a terminal UI and CLI for managing one or more remote WireGuard servers over
+plain SSH \- no agent, no web UI, no extra open port on the server.
+.PP
+Run with no arguments to launch the interactive terminal UI. Any subcommand
+runs the non-interactive CLI instead, suitable for scripting.
+.PP
+Every command that reaches the network prompts interactively for the SSH
+and/or sudo password if key/agent authentication isn't enough.
+.B wgtui
+never accepts a password via a command-line argument or an environment
+variable.
+.SH COMMANDS
+.TP
+.BI "server add " id " \-\-ssh\-host " host " [\-\-ssh\-user " user "] [\-\-ssh\-port " port "] [\-\-ssh\-identity " path "] [\-\-display\-name " name "]"
+Register a new server in the local vault.
+.TP
+.BI "server inspect " id " [\-\-json]"
+Connect and run read-only discovery: OS, WireGuard install state,
+interfaces, network/firewall state.
+.TP
+.BI "server install\-wireguard " id " [\-\-yes]"
+Install WireGuard on a server that doesn't have it yet.
+.TP
+.BI "server configure " id " [\-\-interface " wg0 "] [\-\-vpn\-cidr " cidr "] [\-\-port " 51820 "] [\-\-outbound\-interface " if "] [\-\-full\-tunnel\-default=false] [\-\-yes]"
+Guided first-time WireGuard interface setup.
+.TP
+.BI "peer list " id " [\-\-json]"
+List a server's peers, reconciled with local metadata.
+.TP
+.BI "peer add " id " \-\-name " name " [\-\-full\-tunnel | \-\-split\-tunnel " cidrs "] [\-\-keepalive " N "] [\-\-dns " ips "] [\-\-endpoint\-host " host "] [\-\-no\-psk] [\-\-output " path "] [\-\-qr] [\-\-show] [\-\-yes] [\-\-json]"
+Add a new peer: generates a client keypair locally, allocates a VPN
+address, and produces a ready-to-import client profile.
+.TP
+.BI "peer disable " id " " peer-name " [\-\-yes]"
+Pause a peer: removed from runtime and persistent config, kept locally
+so it can be resumed.
+.TP
+.BI "peer enable " id " " peer-name " [\-\-yes]"
+Resume a peer previously disabled.
+.TP
+.BI "peer revoke " id " " peer-name " [\-\-delete\-profile] [\-\-delete\-metadata] [\-\-yes]"
+Revoke a peer's server access. Deleting the local profile or metadata are
+separate, explicit choices.
+.TP
+.BI "peer rotate " id " " peer-name " [\-\-yes]"
+Replace a peer's keypair in a single atomic change.
+.TP
+.BI "peer export " id " " peer-name " \-\-output " path " [\-\-force]"
+Write a peer's stored client profile to a file.
+.TP
+.BI "peer import " id " \-\-file " path " \-\-name " name " [\-\-interface " if "]"
+Register an existing local \fB.conf\fR as a managed peer, after verifying
+its public key is actually present on the server.
+.TP
+.BI "diagnose " id " [\-\-json]"
+Run the diagnostic checklist: reachability, WireGuard tooling,
+interface/config drift, forwarding, firewall backend, peer key age.
+.TP
+.B mcp
+Run as an MCP server over stdio, exposing server/peer operations as
+tools for AI agent front ends. Requires
+.B WGTUI_MASTER_PASSWORD
+to be set, since there is no terminal to prompt on; see
+.I docs/ARCHITECTURE.md
+in the source tree.
+.TP
+.BI "completion " "bash|zsh|fish"
+Print a shell completion script for the given shell.
+.TP
+.B version
+Print the running version, and a notice if a newer release is available
+(this never triggers an automatic update).
+.SH FILES
+.TP
+.I ~/.local/share/wgtui/vault.json
+The encrypted local vault: registered servers, peer metadata, and saved
+client profiles. Protected by a master password set on first run, in
+addition to filesystem permissions.
+.SH SECURITY
+.B wgtui
+never sends a private key to the server it manages, and never accepts a
+password as a process argument or environment variable. See
+.I docs/THREAT_MODEL.md
+in the source tree for the full analysis.
+.SH SEE ALSO
+Full specification and architecture docs in the project source tree under
+.IR docs/ .
+.SH AUTHOR
+D.SKORIN <dev@skorin.online>
