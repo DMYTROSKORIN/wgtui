@@ -1,10 +1,12 @@
 # Project checkpoint
 
-Last updated: 2026-08-08 00:49 CEST
+Last updated: 2026-08-08 00:59 CEST
 
 Active branch: `master`
 
 Release target: `v0.2.0`
+
+Release status: **published and installed**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -53,15 +55,24 @@ with `git status --short --branch` and `git log -5 --oneline`.
 - PR #7 (`Release v0.2.0: polished responsive TUI`) passed both GitHub CI
   jobs, including build, vet, unit, race, Staticcheck, govulncheck and Semgrep.
 - PR #7 was merged into `master` as `682924c`.
+- Final checkpoint PR #8 passed CI and was merged as `f337526`.
+- Annotated tag `v0.2.0` points at `f337526` and is pushed to origin.
+- Master CI #19 passed.
+- Release workflow #3 passed Semgrep, build, vet, race, Staticcheck,
+  govulncheck and GoReleaser.
+- GitHub Release `v0.2.0` is published (not draft/prerelease) with checksums,
+  four Linux/macOS archives, two `.deb` files and two `.rpm` files.
+- `scripts/install.sh v0.2.0` verified the published archive checksum and
+  installed `wgtui 0.2.0` at `~/.local/bin/wgtui` with mode `0755`.
+- Installed binary SHA-256:
+  `ecb9853a17ed28beebca3f10d67df8c8b11d3d1be1467b77cb8426026bb2e61a`.
 
 ## Resume here
 
-1. Commit and push this final checkpoint on `master`; verify its CI.
-2. Tag that release commit `v0.2.0` and push the tag.
-3. Wait for the Release workflow and verify all `.tar.gz`, `.deb`, `.rpm` and
-   checksum assets plus their embedded `wgtui 0.2.0` version.
-4. Install the published release with `scripts/install.sh v0.2.0`, verify the
-   local version, and update this file with the final release result.
+Release `v0.2.0` is complete; there is no unfinished implementation or
+publishing step. For new work, start from the latest `origin/master`, create a
+feature branch, and treat real-terminal feedback as a new scoped change. Do not
+repeat the completed responsive redesign or release process.
 
 ## Publishing note
 
