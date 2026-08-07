@@ -102,7 +102,8 @@ func (m *model) startPeerAdd() tea.Cmd {
 	return m.releaseTerminalAndRun(func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
-		prompts := newTerminalPrompts(os.Stdout)
+		target := connectingBanner(os.Stdout, s)
+		prompts := newTerminalPrompts(os.Stdout, target)
 		sess, err := dial(ctx, s, prompts)
 		if err != nil {
 			return planReadyMsg{err: fmt.Errorf("connect: %w", err), cancelScreen: screenServerDetail}

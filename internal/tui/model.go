@@ -381,7 +381,8 @@ func (m *model) connectAndDiscoverCmd(s domain.Server) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
-		prompts := newTerminalPrompts(os.Stdout)
+		target := connectingBanner(os.Stdout, s)
+		prompts := newTerminalPrompts(os.Stdout, target)
 		sess, err := dial(ctx, s, prompts)
 		if err != nil {
 			return discoveryMsg{err: fmt.Sprintf("connect: %v", err)}
