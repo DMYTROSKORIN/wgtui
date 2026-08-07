@@ -22,7 +22,7 @@ func TestBuildScript_ContainsExpectedSteps(t *testing.T) {
 	mustContain := []string{
 		"set -e",
 		"mkdir \"$LOCKDIR\"",
-		"trap 'rmdir \"$LOCKDIR\" 2>/dev/null' EXIT",
+		"trap cleanup EXIT",
 		"sha256sum \"$CONF\"",
 		"WGTUI_FINGERPRINT_MISMATCH",
 		"cp -p \"$CONF\" \"$BACKUP\"",
@@ -31,6 +31,9 @@ func TestBuildScript_ContainsExpectedSteps(t *testing.T) {
 		"mv \"$TMP\" \"$CONF\"",
 		"wg syncconf \"$IFACE\"",
 		"WGTUI_APPLY_FAILED_ROLLED_BACK",
+		"WGTUI_RECOVERY_REQUIRED $BACKUP",
+		"KEEP_BACKUP=1",
+		"KEEP_BACKUP=0",
 		"WGTUI_OK",
 		"should-not-appear-since-this-is-just-a-test-marker", // the actual payload, via the heredoc
 	}
@@ -38,6 +41,19 @@ func TestBuildScript_ContainsExpectedSteps(t *testing.T) {
 		if !strings.Contains(script, want) {
 			t.Errorf("script missing expected fragment %q", want)
 		}
+	}
+}
+
+func TestBuildScript_DeletesRecoveryCopyUnlessRecoveryIsRequired(t *testing.T) {
+	script, err := buildScript(validPlan())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(script, `if [ "$KEEP_BACKUP" -eq 0 ]; then [ -z "$BACKUP" ] || rm -f "$BACKUP" || true`) {
+		t.Fatal("cleanup does not remove the temporary recovery copy")
+	}
+	if !strings.Contains(script, `else echo "WGTUI_RECOVERY_REQUIRED $BACKUP"`) {
+		t.Fatal("cleanup does not retain and report the recovery copy after a failed restore")
 	}
 }
 

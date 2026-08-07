@@ -13,7 +13,7 @@ and [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for the component map referenced b
 | SSH credentials (key, agent, or interactive password) | Local machine / ssh-agent / Keychain | Compromise gives shell/root access to the managed server |
 | `sudo` password | Held in process memory only during a session | Compromise gives root on the managed server |
 | Master password for the profile vault | User's memory + derived key in process memory | Compromise decrypts every stored client profile |
-| WireGuard config files, backups | Remote server, `/etc/wireguard` | Contains the server private key; must never be copied off-host unredacted |
+| WireGuard config and temporary recovery copy | Remote server, `/etc/wireguard` | Contains the server private key; must never be copied off-host unredacted |
 | Local profile vault contents | Local machine, encrypted at rest | Contains every client private key ever issued from this machine |
 
 ## Trust boundaries
@@ -21,7 +21,8 @@ and [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for the component map referenced b
 1. **Local machine ↔ remote server**, crossed only over the SSH transport
    (`internal/sshtransport`).
 2. **wgtui process ↔ disk**, crossed by `internal/profilevault` (encrypted) and
-   `internal/wgconfig`/`internal/transaction` (remote config files, backups).
+   `internal/wgconfig`/`internal/transaction` (remote config files and temporary
+   recovery copies).
 3. **wgtui process ↔ terminal**, crossed by CLI/TUI output, logs, and the QR display —
    anything rendered here is implicitly "shown to whoever is looking at this screen or
    this terminal's scrollback."
@@ -89,8 +90,10 @@ prompt-and-continue.
 runtime state, and local metadata disagreeing with each other — worst case, WireGuard
 stops passing traffic or SSH itself becomes unreachable.
 
-*Mitigation:* Every mutation is backup-before-write, verified-after-write, and rolled back
-on any failure (spec §15.2, §24). Reconnection after an SSH drop triggers a fresh
+*Mitigation:* Every mutation creates a same-host temporary recovery copy before writing,
+is verified after writing, and is rolled back on an apply failure (spec §15.2, §24).
+The copy is removed after success or verified rollback and retained only when automatic
+recovery itself fails. Reconnection after an SSH drop triggers a fresh
 discovery/drift comparison rather than blindly retrying (spec §24.1). Firewall/NAT changes
 never flush existing tables/chains (spec §13.5) — a full flush during a config mistake is
 exactly the class of failure that can cut off the SSH session used to fix it.

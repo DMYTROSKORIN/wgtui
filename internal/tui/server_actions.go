@@ -112,7 +112,7 @@ func (m *model) startConfigurePrep() tea.Cmd {
 		}
 		if res, err := sess.client.RunCommand(ctx, "command -v wg-quick"); err != nil || res.ExitCode != 0 {
 			sess.close()
-			return configurePrepMsg{err: fmt.Errorf("wg-quick not found - install WireGuard first ([i])")}
+			return configurePrepMsg{err: fmt.Errorf("wg-quick not found - install WireGuard first (press i)")}
 		}
 
 		var suggestedCIDR string
@@ -194,7 +194,7 @@ func (m *model) updateConfigureForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) viewConfigureForm() string {
-	return titleStyle.Render("wgtui") + "  " + subtitleStyle.Render("Configure "+m.selected.DisplayName) + "\n\n" + m.cfForm.View()
+	return formScreen(m, "Configure "+m.selected.DisplayName, m.cfForm.View(), "Esc Cancel", "Ctrl+C Quit")
 }
 
 // submitConfigureForm needs no further network calls - the session opened

@@ -63,6 +63,5 @@ func (m *model) updatePasswordForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) viewPasswordForm() string {
-	return titleStyle.Render("wgtui") + "  " + subtitleStyle.Render("Security / change master password") + "\n\n" +
-		m.passwordForm.View() + "\n\n" + footerStyle.Render("[esc] cancel  [ctrl+c] quit")
+	return formScreen(m, "Security / change master password", m.passwordForm.View(), "Esc Cancel", "Ctrl+C Quit")
 }

@@ -173,12 +173,12 @@ func (s *Server) peerAdd(ctx context.Context, req *mcp.CallToolRequest, args Pee
 		Interface: resolvedIface, CreatedAt: time.Now(), Status: profilevault.PeerStatusActive,
 	})
 	if err := s.vault.Save(s.vaultPath); err != nil {
-		return nil, PeerAddResult{}, fmt.Errorf("peer was created on the server (backup: %s) but saving the local vault failed: %w - "+
+		return nil, PeerAddResult{}, fmt.Errorf("peer was created on the server but saving the local vault failed: %w - "+
 			"the client profile could not be saved locally; use `wgtui peer revoke` via the CLI to remove it from the server, or retry saving",
-			result.Outcome.BackupPath, err)
+			err)
 	}
 
-	return textResult(fmt.Sprintf("Added peer %q, VPN address %s. Backup: %s. Use `wgtui peer export` to retrieve the client profile file.", args.Name, addr, result.Outcome.BackupPath)),
+	return textResult(fmt.Sprintf("Added peer %q, VPN address %s. Use `wgtui peer export` to retrieve the client profile file.", args.Name, addr)),
 		PeerAddResult{Applied: true, Plan: plan, Name: args.Name, PublicKey: result.KeyPair.PublicKey, VPNAddress: addr.String(), BackupPath: result.Outcome.BackupPath}, nil
 }
 
@@ -243,10 +243,10 @@ func (s *Server) peerDisable(ctx context.Context, req *mcp.CallToolRequest, args
 	meta.Interface = resolvedIface
 	s.vault.UpdatePeer(meta)
 	if err := s.vault.Save(s.vaultPath); err != nil {
-		return nil, PeerActionResult{}, fmt.Errorf("applied on the server (backup: %s) but failed to save local metadata: %w", outcome.BackupPath, err)
+		return nil, PeerActionResult{}, fmt.Errorf("access was paused on the server but local metadata could not be saved: %w", err)
 	}
 
-	return textResult(fmt.Sprintf("Disabled %q. Backup: %s", args.Name, outcome.BackupPath)),
+	return textResult(fmt.Sprintf("Paused %q. Server access removed; local profile kept.", args.Name)),
 		PeerActionResult{Applied: true, Plan: plan, BackupPath: outcome.BackupPath}, nil
 }
 
@@ -290,10 +290,10 @@ func (s *Server) peerEnable(ctx context.Context, req *mcp.CallToolRequest, args 
 	meta.Interface = resolvedIface
 	s.vault.UpdatePeer(meta)
 	if err := s.vault.Save(s.vaultPath); err != nil {
-		return nil, PeerActionResult{}, fmt.Errorf("applied on the server (backup: %s) but failed to save local metadata: %w", outcome.BackupPath, err)
+		return nil, PeerActionResult{}, fmt.Errorf("access was resumed on the server but local metadata could not be saved: %w", err)
 	}
 
-	return textResult(fmt.Sprintf("Resumed %q. Backup: %s", args.Name, outcome.BackupPath)),
+	return textResult(fmt.Sprintf("Resumed %q. Server access restored.", args.Name)),
 		PeerActionResult{Applied: true, Plan: plan, BackupPath: outcome.BackupPath}, nil
 }
 
@@ -356,7 +356,7 @@ func (s *Server) peerRevoke(ctx context.Context, req *mcp.CallToolRequest, args 
 		return nil, PeerActionResult{}, fmt.Errorf("server change applied but failed to save the local vault: %w", err)
 	}
 
-	return textResult(fmt.Sprintf("Revoked %q. profile_deleted=%v metadata_deleted=%v. Backup: %s", args.Name, args.DeleteProfile, args.DeleteMetadata, outcome.BackupPath)),
+	return textResult(fmt.Sprintf("Revoked %q. profile_deleted=%v metadata_deleted=%v.", args.Name, args.DeleteProfile, args.DeleteMetadata)),
 		PeerActionResult{Applied: true, Plan: plan, BackupPath: outcome.BackupPath}, nil
 }
 
@@ -436,9 +436,9 @@ func (s *Server) peerRotate(ctx context.Context, req *mcp.CallToolRequest, args 
 	_ = s.vault.AddPeer(meta)
 
 	if err := s.vault.Save(s.vaultPath); err != nil {
-		return nil, PeerRotateResult{}, fmt.Errorf("applied on the server (backup: %s) but saving the local vault failed: %w", result.Outcome.BackupPath, err)
+		return nil, PeerRotateResult{}, fmt.Errorf("keys were rotated on the server but saving the local vault failed: %w", err)
 	}
 
-	return textResult(fmt.Sprintf("Rotated %q: %s -> %s. Backup: %s", args.Name, peerview.ShortenKey(oldPublicKey), peerview.ShortenKey(result.KeyPair.PublicKey), result.Outcome.BackupPath)),
+	return textResult(fmt.Sprintf("Rotated %q: %s -> %s. New local profile saved.", args.Name, peerview.ShortenKey(oldPublicKey), peerview.ShortenKey(result.KeyPair.PublicKey))),
 		PeerRotateResult{Applied: true, Plan: plan, OldPublicKey: oldPublicKey, NewPublicKey: result.KeyPair.PublicKey, BackupPath: result.Outcome.BackupPath}, nil
 }

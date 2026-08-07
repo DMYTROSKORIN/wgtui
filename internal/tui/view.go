@@ -54,7 +54,7 @@ func (m *model) viewServerList() string {
 	servers := m.vault.Registry.Servers
 	if len(servers) == 0 {
 		list.WriteString(dimStyle.Render("No servers yet.") + "\n\n")
-		list.WriteString(textStyle.Render("Press ") + selectedStyle.Render("F2") + textStyle.Render(" to add one."))
+		list.WriteString(textStyle.Render("Press ") + selectedStyle.Render("n") + textStyle.Render(" to add one."))
 	} else {
 		for i, s := range servers {
 			line := s.DisplayName
@@ -68,7 +68,7 @@ func (m *model) viewServerList() string {
 
 	leftWidth := clamp(m.width/3, 24, 36)
 	rightWidth := max(30, m.width-leftWidth-5)
-	panelHeight := max(10, m.height-6)
+	panelHeight := m.dashboardPanelHeight()
 	left := panelStyle.Width(leftWidth).Height(panelHeight).Render(titleStyle.Render("Servers") + "\n\n" + list.String())
 	var details string
 	if len(servers) == 0 {
@@ -91,7 +91,7 @@ func (m *model) viewServerList() string {
 	}
 	right := panelStyle.Width(rightWidth).Height(panelHeight).Render(details)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
-	return appHeader("Server manager") + "\n" + body + "\n" + keyBar("F1 Help", "F2 Add", "F4 Edit", "X Remove", "P Password", "Enter Open", "F10 Quit")
+	return appHeader("Server manager") + "\n" + body + "\n" + keyBar("? Help", "n New", "e Edit", "d Delete", "p Password", "Enter Open", "q Quit")
 }
 
 func (m *model) viewServerDetail() string {
@@ -106,7 +106,7 @@ func (m *model) viewServerDetail() string {
 		content.WriteString(m.viewOverviewTab())
 	}
 
-	panelHeight := max(10, m.height-6)
+	panelHeight := m.dashboardPanelHeight()
 	if m.width < 100 {
 		main := panelStyle.Width(max(40, m.width-4)).Height(panelHeight).Render(content.String())
 		return appHeader(m.selected.DisplayName) + "\n" + main + "\n" + footerStyle.Render(detailFooter(m.tab))
@@ -129,7 +129,7 @@ func (m *model) viewServerSidebar() string {
 		selectedStyle.Render("▶ "+m.selected.DisplayName) + "\n" +
 		dimStyle.Render(m.selected.SSHHostOrAlias) + "\n\n" +
 		connection + "\n\n" +
-		dimStyle.Render("Tab switches views.\nF5 refreshes explicitly.\nEsc returns to servers.")
+		dimStyle.Render("Tab switches views.\nr refreshes explicitly.\nEsc returns to servers.")
 }
 
 func tabsLine(active detailTab) string {
@@ -155,11 +155,11 @@ func tabsLine(active detailTab) string {
 func detailFooter(tab detailTab) string {
 	switch tab {
 	case tabPeers:
-		return keyBar("F1 Help", "F2 Add peer", "Enter Actions", "F5 Refresh", "Tab Next", "Esc Back", "F10 Quit")
+		return keyBar("? Help", "n New peer", "Enter Actions", "r Refresh", "Tab Next", "Esc Back", "Ctrl+C Quit")
 	case tabDiagnose:
-		return keyBar("F1 Help", "F5 Refresh", "Tab Next", "Esc Back", "F10 Quit")
+		return keyBar("? Help", "r Refresh", "Tab Next", "Esc Back", "Ctrl+C Quit")
 	default:
-		return keyBar("F1 Help", "I Install", "C Configure", "F5 Refresh", "Tab Next", "Esc Back", "F10 Quit")
+		return keyBar("? Help", "i Install", "c Configure", "r Refresh", "Tab Next", "Esc Back", "Ctrl+C Quit")
 	}
 }
 
@@ -169,6 +169,33 @@ func appHeader(section string) string {
 
 func keyBar(keys ...string) string {
 	return footerStyle.Render(strings.Join(keys, "   "))
+}
+
+func formScreen(m *model, title, content string, keys ...string) string {
+	return appHeader(title) + "\n" + fullPanel(m, content) + "\n" + keyBar(keys...)
+}
+
+func fullPanel(m *model, content string) string {
+	return panelStyle.
+		Width(max(40, m.width-4)).
+		Height(m.fullPanelHeight()).
+		Render(content)
+}
+
+func (m *model) fullPanelHeight() int {
+	reserved := 5
+	if m.statusMsg != "" {
+		reserved = 8
+	}
+	return max(10, m.height-reserved)
+}
+
+func (m *model) dashboardPanelHeight() int {
+	reserved := 6
+	if m.statusMsg != "" {
+		reserved = 9
+	}
+	return max(10, m.height-reserved)
 }
 
 func clamp(v, low, high int) int {
@@ -183,17 +210,18 @@ func clamp(v, low, high int) int {
 
 func (m *model) viewHelp() string {
 	text := titleStyle.Render("Keyboard help") + "\n\n" +
-		"F1          Open this help\n" +
-		"F2 / a      Add server or peer\n" +
-		"F4 / e      Edit selected server\n" +
-		"F5 / r      Refresh the current view\n" +
-		"F8 / Enter  Actions for selected peer\n" +
+		"?           Open this help\n" +
+		"n           Add server or peer\n" +
+		"e           Edit selected server\n" +
+		"r           Refresh the current view\n" +
+		"Enter       Open server or peer actions\n" +
 		"Tab         Switch dashboard tabs\n" +
 		"Arrows/j/k  Move selection\n" +
 		"Esc         Close dialog or go back\n" +
-		"F10/Ctrl+C  Quit safely\n\n" +
+		"q           Back (quit from server manager)\n" +
+		"Ctrl+C      Quit safely from every screen\n\n" +
 		dimStyle.Render("Network and destructive operations always show their own status or confirmation.")
-	return appHeader("Help") + "\n" + panelStyle.Width(min(70, max(40, m.width-4))).Render(text) + "\n" + keyBar("Esc Close", "F10 Quit")
+	return appHeader("Help") + "\n" + fullPanel(m, text) + "\n" + keyBar("Esc Close", "Ctrl+C Quit")
 }
 
 func (m *model) viewOverviewTab() string {
@@ -212,11 +240,11 @@ func (m *model) viewOverviewTab() string {
 
 		if !r.WireGuard.WgPresent {
 			b.WriteString(warningStyle.Render("WireGuard is not installed on this server.") + "\n")
-			b.WriteString(dimStyle.Render("Press [i] to install it.") + "\n")
+			b.WriteString(dimStyle.Render("Press i to install it.") + "\n")
 		} else {
 			b.WriteString(fmt.Sprintf("WireGuard: present=%v wg-quick=%v %s\n", r.WireGuard.WgPresent, r.WireGuard.WgQuickPresent, orDefault(r.WireGuard.WgVersion, "")))
 			if len(r.WireGuard.Interfaces) == 0 {
-				b.WriteString(dimStyle.Render("  No interfaces configured yet - press [c] to configure one.\n"))
+				b.WriteString(dimStyle.Render("  No interfaces configured yet - press c to configure one.\n"))
 			}
 			for name, d := range r.WireGuard.Interfaces {
 				b.WriteString(fmt.Sprintf("  %-8s active=%-5v config=%-5v drift=%-5v peers(runtime/persistent)=%d/%d\n",
@@ -244,8 +272,8 @@ func (m *model) viewConfirm() string {
 	}
 	b.WriteString(m.confirmForm.View())
 	return appHeader(m.selected.DisplayName) + "\n" +
-		panelStyle.Width(min(82, max(54, m.width-4))).Render(b.String()) + "\n" +
-		keyBar("←/→ Choose", "Enter Confirm", "Esc Cancel", "F10 Quit")
+		fullPanel(m, b.String()) + "\n" +
+		keyBar("←/→ Choose", "Enter Confirm", "Esc Cancel", "Ctrl+C Quit")
 }
 
 // viewApplying is shown for the entire duration of an async apply step -
@@ -254,9 +282,9 @@ func (m *model) viewConfirm() string {
 // top of this text via the real terminal, not through Bubble Tea.
 func (m *model) viewApplying() string {
 	return appHeader(m.selected.DisplayName) + "\n" +
-		panelStyle.Width(min(72, max(44, m.width-4))).Render(
+		fullPanel(m,
 			titleStyle.Render("Applying change")+"\n\n"+textStyle.Render(m.confirmTitle)+"\n\n"+
-				dimStyle.Render("Please wait. The operation is backed up, validated and rolled back on failure."))
+				dimStyle.Render("Please wait. The operation is validated and rolled back automatically on failure."))
 }
 
 func orDefault(s, def string) string {

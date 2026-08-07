@@ -17,8 +17,8 @@ no agent, no web UI, no extra open port on the server.
 - Shows interface/peer state, handshake, endpoint, and traffic counters.
 - Generates client keypairs **locally** and hands the server only the public key — a
   ready `.conf` and QR code are produced on your machine, no `scp` involved.
-- Adds, pauses, resumes, rotates, and revokes peers, each as a backed-up,
-  verified, rollback-on-failure transaction.
+- Adds, pauses, resumes, rotates, and revokes peers, each as a locked,
+  verified, rollback-on-failure transaction with an ephemeral recovery copy.
 - Offers a guided first-time server setup when no WireGuard interface exists yet.
 - Leaves nothing but standard WireGuard, standard config files, and SSH on the server.
 
@@ -49,9 +49,12 @@ this project — it is never a managed server.
 
 - Server private key never leaves the server; client private keys never touch the server.
 - Strict SSH host-key verification by default, always.
-- Every mutating operation is a locked backup → apply → verify → rollback-on-failure
-  transaction.
+- Every mutating operation uses a locked temporary recovery copy, verifies the
+  result, and rolls back on failure. The copy is retained only if recovery itself fails.
 - No secret is ever passed as a process argument, logged, or included in `--json` output.
+- App-owned local state lives in `~/.wgtui-config/vault.json`, encrypted under the
+  master password. Explicit profile exports go to the invoking user's home with mode `0600`.
+- `wgtui` refuses to run as root so local keys cannot silently move into root's home.
 
 Full analysis: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 
@@ -66,9 +69,10 @@ go build ./...
 ```
 
 Running `wgtui` without arguments opens the full-screen dashboard. The master
-password is requested once before the dashboard starts. Inside the app, `F1`
-shows context-independent keyboard help, `F5` explicitly refreshes network
-state, `Esc` goes back, and `F10` or `Ctrl+C` exits safely.
+password is requested once before the dashboard starts. Inside the app, `?`
+shows keyboard help, `r` refreshes network state, `Esc` goes back, and
+`Ctrl+C` exits safely from every screen. Function keys are optional aliases,
+never required.
 
 <details>
 <summary>Installing a release</summary>

@@ -60,7 +60,9 @@ func (m *model) startPeerForm() {
 				}),
 			huh.NewInput().Title("DNS servers").Description("Optional, comma-separated.").Value(&m.pfDNS),
 			huh.NewInput().Title("Endpoint host").Description("Optional - defaults to the server's SSH host.").Value(&m.pfEndpointHost),
-			huh.NewConfirm().Title("Generate a preshared key?").Affirmative("Yes").Negative("No").Value(&m.pfPSK),
+			huh.NewConfirm().Title("Add an extra preshared key (recommended)?").
+				Description("Optional 256-bit secret mixed into WireGuard's normal public-key handshake.").
+				Affirmative("Yes").Negative("No").Value(&m.pfPSK),
 		),
 	).WithTheme(formTheme()).WithKeyMap(formKeyMap())
 	m.screen = screenPeerForm
@@ -81,7 +83,7 @@ func (m *model) updatePeerForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) viewPeerForm() string {
-	return titleStyle.Render("wgtui") + "  " + subtitleStyle.Render("Add peer") + "\n\n" + m.peerForm.View()
+	return formScreen(m, "Add peer", m.peerForm.View(), "Esc Cancel", "Ctrl+C Quit")
 }
 
 // startPeerAdd connects, resolves the interface, and allocates the next
@@ -101,7 +103,7 @@ func (m *model) startPeerAdd() tea.Cmd {
 	sess := m.detailSession
 	if sess == nil || sess.closed {
 		return func() tea.Msg {
-			return planReadyMsg{err: fmt.Errorf("server session is not connected; return to Overview and press F5"), cancelScreen: screenServerDetail}
+			return planReadyMsg{err: fmt.Errorf("server session is not connected; return to Overview and press r"), cancelScreen: screenServerDetail}
 		}
 	}
 	return func() tea.Msg {
@@ -192,7 +194,7 @@ func (m *model) applyPeerAdd(p peerAddParams) func(*model) tea.Cmd {
 					Interface: p.iface, CreatedAt: time.Now(), Status: profilevault.PeerStatusActive,
 				})
 				if err := m.vault.Save(m.vaultPath); err != nil {
-					m.setError(fmt.Errorf("peer was created on the server (backup: %s) but saving locally failed: %w", result.Outcome.BackupPath, err))
+					m.setError(fmt.Errorf("peer was created on the server, but its local encrypted profile could not be saved: %w", err))
 					return nil
 				}
 				m.peersLoaded = false
@@ -200,8 +202,8 @@ func (m *model) applyPeerAdd(p peerAddParams) func(*model) tea.Cmd {
 				m.revealProfile = clientConf
 				m.revealMode = ""
 				m.screen = screenPeerReveal
-				m.setStatus("Added " + p.name + ". Backup: " + result.Outcome.BackupPath)
-				return nil
+				m.setStatus("Added " + p.name + ". Client profile saved in the encrypted vault.")
+				return m.loadPeersFromSessionCmd()
 			}}
 		}
 	}
@@ -217,7 +219,7 @@ func (m *model) updatePeerReveal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "s":
 		m.revealMode = "text"
-	case "Q":
+	case "g", "Q":
 		m.revealMode = "qr"
 	case "e":
 		m.selectedPeer = peerview.Peer{Name: m.revealName}
@@ -231,7 +233,7 @@ func (m *model) updatePeerReveal(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *model) viewPeerReveal() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("wgtui") + "  " + subtitleStyle.Render("Added "+m.revealName) + "\n\n")
+	b.WriteString(accentHeadingStyle.Render("Client profile: "+m.revealName) + "\n\n")
 
 	switch m.revealMode {
 	case "text":
@@ -250,6 +252,6 @@ func (m *model) viewPeerReveal() string {
 		b.WriteString(dimStyle.Render("A fresh handshake from the client is the only real proof it works - this doesn't wait for one."))
 	}
 
-	b.WriteString("\n\n" + footerStyle.Render("[s] show profile  [Q] show as QR  [e] export to file  [enter] done"))
-	return b.String()
+	return appHeader(m.selected.DisplayName+" / "+m.revealName) + "\n" + fullPanel(m, b.String()) + "\n" +
+		keyBar("s Show config", "g Show QR", "e Save to home", "Enter Done", "Ctrl+C Quit")
 }

@@ -149,8 +149,8 @@ unknown directives (spec §15.5), plus:
 
 ### transaction
 
-The backup → lock → apply → verify → rollback engine (spec §15.2) used by every mutating
-peer/interface operation (add/disable/resume/delete/rotate). Implemented as a single
+The lock → ephemeral recovery copy → apply → verify → rollback engine (spec §15.2)
+is used by every mutating peer/interface operation (add/disable/resume/delete/rotate). Implemented as a single
 remote script per mutation (built by `internal/transaction`, run via
 `sshtransport.Client.RunSudoScript`) rather than several separate SSH round trips: one
 sudo prompt, one atomic pass, and no window between our own separate commands for the
@@ -201,8 +201,11 @@ metadata created before this field existed.
 
 Local encrypted storage for generated client `.conf` profiles and the peer metadata
 registry (spec §7.3, §16.1), under the home directory of the user who ran `wgtui`
-(decision, spec §30.3/§30.5). Encrypted at rest with a master password set on first run
+(currently `~/.wgtui-config/vault.json`; decision, spec §30.3/§30.5). Encrypted at rest with a master password set on first run
 (spec §30.4). Directory `0700`, files `0600`, atomic writes via temp file + rename.
+Legacy XDG/Linux and macOS vault paths are migrated atomically on first access. Client
+profiles remain inside the encrypted vault unless the user explicitly exports one to
+their home directory.
 
 ### discovery
 
@@ -295,11 +298,11 @@ mutation by itself.
    `discovery`/`wgconfig`.
 3. A **plan** (diff, no secrets) is produced and shown to the user (spec §20.4); nothing
    is sent to the server yet.
-4. On confirmation, `transaction` executes the locked backup/apply/verify sequence via
-   `sshtransport` and `wgconfig`.
+4. On confirmation, `transaction` executes the locked recovery-copy/apply/verify
+   sequence via `sshtransport` and `wgconfig`.
 5. On success, `profilevault` persists the new local `.conf` and metadata.
-6. On any failure at any step, `transaction` restores the backup and reports
-   `recovery required` rather than guessing (spec §24).
+6. On an apply failure, `transaction` restores the temporary recovery copy. It reports
+   `recovery required` only if that automatic restore also fails (spec §24).
 
 ## Platform support (MVP)
 

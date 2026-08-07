@@ -202,19 +202,16 @@ macOS является платформой управляющего клиен�
 
 Профили по умолчанию сохраняются вне исходного кода и вне обычных логов.
 
-Предлагаемые каталоги:
-
-Linux:
+Единый переносимый каталог приложения на Linux и macOS:
 
 ```text
-${XDG_DATA_HOME:-~/.local/share}/wgtui/profiles/<server-id>/
+~/.wgtui-config/vault.json
 ```
 
-macOS:
-
-```text
-~/Library/Application Support/wgtui/profiles/<server-id>/
-```
+Профили и метаданные находятся внутри одного зашифрованного vault. Старые
+XDG/Linux и macOS пути переносятся атомарно при первом запуске новой версии.
+Явно экспортируемый пользователем `.conf` сохраняется непосредственно в его
+домашнем каталоге и не считается внутренним состоянием приложения.
 
 Требования:
 
@@ -224,7 +221,7 @@ macOS:
 - понятное предупреждение при сохранении в синхронизируемый каталог;
 - запрет на запись поверх существующего файла без подтверждения;
 - локальный реестр не должен содержать private key отдельно от самого профиля;
-- возможность выбрать пользовательский каталог экспорта.
+- экспорт только в домашний каталог запустившего пользователя с выбором имени файла.
 
 Пароли не сохранять в локальном реестре. Путь к SSH private key сохранять можно, сам ключ копировать нельзя.
 
@@ -630,15 +627,18 @@ UI должен явно показывать drift между ними.
 1. получить блокировку интерфейса;
 2. повторно прочитать fingerprint текущей конфигурации;
 3. отказаться от изменения, если файл изменился после предварительного чтения;
-4. создать timestamped backup;
+4. создать timestamped временную recovery-копию на сервере;
 5. создать новый конфиг во временном файле на том же filesystem;
 6. сохранить владельца и mode исходного файла;
 7. проверить синтаксис через штатные WireGuard tools;
 8. атомарно заменить файл;
 9. применить конфигурацию без остановки остальных peers;
 10. проверить runtime и persistent state;
-11. при ошибке восстановить backup и повторно синхронизировать runtime;
-12. освободить блокировку и удалить временные файлы.
+11. при ошибке восстановить recovery-копию и повторно синхронизировать runtime;
+12. после успеха или проверенного rollback удалить recovery-копию и временные файлы;
+13. сохранить recovery-копию и показать её удалённый путь только если автоматическое
+    восстановление само завершилось ошибкой;
+14. освободить блокировку.
 
 Предпочтительное live-применение — `wg syncconf`, подготовленное через `wg-quick strip`, поскольку оно не должно без необходимости разрывать соединения остальных peers.
 
@@ -695,7 +695,7 @@ server-id + public-key -> name, notes, profile path, created_at, status
 
 - только public key, имя, заметка, дата, статус и VPN-адрес;
 - mode `0600`, root-owned;
-- атомарные изменения и backup;
+- атомарные изменения и временная recovery-копия;
 - приложение работает и без него;
 - повреждение metadata не должно ломать WireGuard;
 - WireGuard config остаётся источником истины для доступа.
@@ -731,6 +731,11 @@ server-id + public-key -> name, notes, profile path, created_at, status
 - срок действия optional, только как metadata в MVP;
 - путь локального экспорта;
 - optional preshared key.
+
+`PresharedKey` — дополнительный 256-битный симметричный секрет, который WireGuard
+смешивает с обычным public-key handshake. Он не заменяет `PublicKey`, не обязателен
+для безопасности WireGuard и включён по умолчанию как дополнительный слой. Его нужно
+защищать так же, как private key; он не попадает в логи, планы и обычные экраны.
 
 Проверки:
 
@@ -880,7 +885,7 @@ SERVERS
 Office 308       reachable   wg0 active   2 peers   1 online
 Home             offline     last seen 2 days ago
 
-[Enter] Open  [a] Add server  [e] Edit  [d] Forget  [q] Quit
+[Enter] Open  [n] Add server  [e] Edit  [d] Forget  [?] Help  [q] Quit
 ```
 
 Удаление сервера с этого экрана удаляет только локальную запись подключения, а не WireGuard на сервере. Формулировка должна быть «Забыть сервер», не «Удалить сервер».
@@ -900,7 +905,7 @@ Office308         10.10.0.2    online     42 sec ago      42 MB    310 MB
 AlexOffice308     10.10.0.3    idle       2 hours ago     15 MB     81 MB
 unknown-aQX5...   10.10.0.9    never      never            0 B       0 B
 
-[a] Add [space] Actions [r] Refresh [d] Diagnose [s] Server [q] Back
+[n] Add [Enter] Actions [r] Refresh [Tab] Next view [?] Help [Esc] Back
 ```
 
 ### 20.3. Экран peer
@@ -932,7 +937,7 @@ Private key никогда не показывать на экране дета�
 + server AllowedIPs: 10.10.0.3/32
 + client mode: full tunnel
 + local file: .../AlexOffice308.conf
-+ backup: /etc/wireguard/wg0.conf.bak.<timestamp>
++ temporary recovery copy: created on the remote server and removed after verification
 
 Применить? [y/N]
 ```
@@ -1005,7 +1010,7 @@ wgtui diagnose office
 - firewall forwarding;
 - endpoint DNS resolution на локальной машине;
 - внешний порт: только ограниченная UDP-эвристика;
-- backup health;
+- состояние аварийной recovery-копии;
 - права на конфиги;
 - `SaveConfig` risk;
 - локальные profile/key mismatches.
@@ -1039,8 +1044,9 @@ wgtui diagnose office
 - Не разрешать path traversal в именах профилей.
 - Не использовать имя пользователя как shell fragment.
 - Проверять fingerprint файла перед записью для защиты от concurrent modification.
-- Создавать backup до mutation.
-- Не удалять backups автоматически в MVP.
+- Создавать временную recovery-копию до mutation.
+- Удалять её после успешной проверки или проверенного rollback; сохранять только при
+  ошибке автоматического восстановления.
 
 ### 23.2. Имена
 
@@ -1061,7 +1067,7 @@ wgtui diagnose office
 - interface;
 - сокращённый public key;
 - результат;
-- путь backup;
+- путь recovery-копии только при состоянии `recovery required`;
 - диагностические коды.
 
 Не логировать:
@@ -1081,14 +1087,14 @@ Debug mode не отменяет эти ограничения.
 
 - Не выполнять новую mutation вслепую.
 - После восстановления SSH повторно выполнить discovery.
-- Сравнить runtime, persistent config и backup.
+- Сравнить runtime, persistent config и сохранённую recovery-копию, если она осталась.
 - Показать состояние `recovery required`.
-- Предложить завершить транзакцию или восстановить конкретный backup.
+- Предложить завершить транзакцию или восстановить конкретную recovery-копию.
 
 ### 24.2. Ошибка применения runtime
 
-- восстановить backup persistent config;
-- попытаться синхронизировать runtime из backup;
+- восстановить persistent config из временной recovery-копии;
+- попытаться синхронизировать runtime из recovery-копии;
 - проверить SSH;
 - не перезапускать весь сервер;
 - вывести точный безопасный план ручного восстановления.
@@ -1103,9 +1109,11 @@ Debug mode не отменяет эти ограничения.
 - при отмене предложить автоматически отозвать только что созданный peer;
 - не оставлять неизвестный активный peer без явного решения пользователя.
 
-### 24.4. Backup restore
+### 24.4. Recovery restore
 
-Восстановление всегда показывает точный backup и diff. Перезапуск `wg-quick@...` допускается только после предупреждения, поскольку он кратковременно отключит всех peers.
+Если автоматический rollback не удался, восстановление всегда показывает точный
+удалённый путь сохранённой recovery-копии и diff. Перезапуск `wg-quick@...` допускается
+только после предупреждения, поскольку он кратковременно отключит всех peers.
 
 ## 25. Нефункциональные требования
 
@@ -1191,7 +1199,7 @@ Debug mode не отменяет эти ограничения.
 - terminal escape sequences в remote hostname/comments;
 - compromised `known_hosts` scenario;
 - TOCTOU при config update;
-- permissions profiles/backups.
+- permissions vault/exported profiles/temporary recovery copies.
 
 ## 27. Критерии приёмки MVP
 
@@ -1217,7 +1225,8 @@ MVP принят, если выполнены все условия:
 18. Показываются handshake, endpoint, RX и TX.
 19. Показывается предупреждение, что online — эвристика.
 20. Есть `--dry-run` и `--json`.
-21. Каждая mutation создаёт backup.
+21. Каждая mutation создаёт временную recovery-копию и удаляет её после успеха или
+    проверенного rollback.
 22. Искусственная ошибка вызывает автоматический rollback.
 23. Full-tunnel профиль в тестовой среде получает внешний IPv4 сервера.
 24. Эталонный Office 308 профиль после подключения показывает `94.200.113.114`.
@@ -1250,7 +1259,7 @@ MVP принят, если выполнены все условия:
 - local `.conf`;
 - QR;
 - disable/resume/delete;
-- backups, locks, rollback;
+- temporary recovery copies, locks, rollback;
 - local metadata.
 
 ### Этап 3. Установка и первоначальная настройка

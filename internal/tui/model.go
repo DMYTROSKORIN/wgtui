@@ -114,19 +114,20 @@ type model struct {
 	detailErr string
 
 	// peers tab
-	peerTable        table.Model
-	peers            []peerview.Peer
-	peersLoaded      bool
-	peersErr         string
-	selectedPeer     peerview.Peer
-	actionMenu       *huh.Form
-	actionMenuChoice *string
-	exportForm       *huh.Form
-	exportPath       string
-	passwordForm     *huh.Form
-	currentPassword  string
-	newPassword      string
-	confirmPassword  string
+	peerTable       table.Model
+	peers           []peerview.Peer
+	peersLoaded     bool
+	peersRefreshing bool
+	peersErr        string
+	selectedPeer    peerview.Peer
+	actionOptions   []peerActionOption
+	actionCursor    int
+	exportForm      *huh.Form
+	exportPath      string
+	passwordForm    *huh.Form
+	currentPassword string
+	newPassword     string
+	confirmPassword string
 
 	// generic single-step plan/confirm (install, disable, enable, rotate)
 	confirmForm  *huh.Form
@@ -192,6 +193,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.screen = screenHelp
 			}
 			return m, nil
+		case "?":
+			if m.screen == screenServerList || m.screen == screenServerDetail || m.screen == screenPeerActionMenu || m.screen == screenPeerReveal {
+				m.helpReturn = m.screen
+				m.screen = screenHelp
+				return m, nil
+			}
 		}
 	}
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
@@ -217,6 +224,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case peerListMsg:
 		m.peersLoaded = true
+		m.peersRefreshing = false
 		m.peersErr = msg.err
 		m.peers = msg.peers
 		m.rebuildPeerTable()
@@ -360,7 +368,7 @@ func (m *model) updateServerList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor < len(servers)-1 {
 			m.cursor++
 		}
-	case "a", "f2":
+	case "a", "n", "f2":
 		m.clearStatus()
 		m.startServerForm(false)
 		return m, m.serverForm.Init()
@@ -372,7 +380,7 @@ func (m *model) updateServerList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selected = servers[m.cursor]
 		m.startServerForm(true)
 		return m, m.serverForm.Init()
-	case "x":
+	case "x", "d":
 		if len(servers) == 0 {
 			return m, nil
 		}
@@ -444,7 +452,7 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.tab == tabOverview && !m.loading {
 			return m, m.startConfigurePrep()
 		}
-	case "a", "f2":
+	case "a", "n", "f2":
 		if m.tab == tabPeers {
 			m.startPeerForm()
 			return m, m.peerForm.Init()

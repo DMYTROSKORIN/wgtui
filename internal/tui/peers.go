@@ -4,14 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/domain"
 	"github.com/DMYTROSKORIN/wgtui/internal/peerops"
@@ -48,8 +49,8 @@ func (m *model) rebuildPeerTable() {
 	}
 
 	styles := table.DefaultStyles()
-	styles.Header = styles.Header.Faint(true)
-	styles.Selected = styles.Selected.Foreground(lipgloss.Color(colorHighlight)).Bold(true)
+	styles.Header = styles.Header.Foreground(colorMuted).Bold(true)
+	styles.Selected = styles.Selected.Foreground(colorHighlight).Bold(true)
 
 	m.peerTable = table.New(
 		table.WithColumns(cols),
@@ -63,13 +64,17 @@ func (m *model) rebuildPeerTable() {
 func (m *model) viewPeersTab() string {
 	switch {
 	case !m.peersLoaded:
-		return "Connecting and listing peers...\n"
+		return warningStyle.Render("↻ Loading peers from the server…") + "\n"
 	case m.peersErr != "":
 		return dangerStyle.Render("Error: "+m.peersErr) + "\n"
 	case len(m.peers) == 0:
-		return dimStyle.Render("No peers yet. Press [a] to add one.") + "\n"
+		return dimStyle.Render("No peers yet. Press n to add one.") + "\n"
 	default:
-		return m.peerTable.View() + "\n\n" + m.viewSelectedPeerCard()
+		activity := ""
+		if m.peersRefreshing {
+			activity = warningStyle.Render("↻ Refreshing peer state…") + "\n\n"
+		}
+		return activity + m.peerTable.View() + "\n\n" + m.viewSelectedPeerCard()
 	}
 }
 
@@ -124,6 +129,7 @@ func (m *model) viewSelectedPeerCard() string {
 // and cached any SSH/sudo credentials in this session, so changing tabs
 // never drops out of the TUI to ask for another password.
 func (m *model) loadPeersFromSessionCmd() tea.Cmd {
+	m.peersRefreshing = true
 	s := m.selected
 	sess := m.detailSession
 	if sess == nil || sess.closed {
@@ -168,6 +174,12 @@ func resolvePeerInterface(ctx context.Context, sess *session, metaInterface, fla
 	return peerops.ResolveInterface(ctx, sess.client, flagInterface)
 }
 
+type peerActionOption struct {
+	label string
+	value string
+	risk  bool
+}
+
 func (m *model) openActionMenu() (tea.Model, tea.Cmd) {
 	row := m.peerTable.Cursor()
 	if row < 0 || row >= len(m.peers) {
@@ -181,35 +193,46 @@ func (m *model) openActionMenu() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	var options []huh.Option[string]
+	var options []peerActionOption
 	if m.selectedPeer.State == "disabled" {
-		options = append(options, huh.NewOption("Resume access — restore the same server entry", "enable"))
+		options = append(options, peerActionOption{"Resume access", "enable", false})
 	} else {
-		options = append(options, huh.NewOption("Pause access — keep profile and metadata", "disable"))
-		options = append(options, huh.NewOption("Rotate keys — replace client identity", "rotate"))
+		options = append(options, peerActionOption{"Pause access (profile is kept)", "disable", false})
+		options = append(options, peerActionOption{"Rotate keys and replace client profile", "rotate", false})
 	}
-	options = append(options, huh.NewOption("Revoke access — destructive", "revoke"))
 	if m.selectedPeer.ProfileAvailable {
-		options = append(options, huh.NewOption("Export client profile", "export"))
+		options = append(options,
+			peerActionOption{"Show QR code", "qr", false},
+			peerActionOption{"Save client profile to home directory", "export", false},
+		)
 	}
-
-	var choice string
-	m.actionMenu = huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().Title("Actions for " + m.selectedPeer.Name).Height(len(options) + 2).Options(options...).Value(&choice),
-	)).WithTheme(formTheme()).WithKeyMap(formKeyMap())
-	m.actionMenuChoice = &choice
+	options = append(options, peerActionOption{"Revoke access and optionally delete local data", "revoke", true})
+	m.actionOptions = options
+	m.actionCursor = 0
 	m.screen = screenPeerActionMenu
-	return m, m.actionMenu.Init()
+	return m, nil
 }
 
 func (m *model) updateActionMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
-	form, cmd := m.actionMenu.Update(msg)
-	m.actionMenu = form.(*huh.Form)
-
-	switch m.actionMenu.State {
-	case huh.StateCompleted:
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch key.String() {
+	case "up", "k":
+		if m.actionCursor > 0 {
+			m.actionCursor--
+		}
+	case "down", "j":
+		if m.actionCursor < len(m.actionOptions)-1 {
+			m.actionCursor++
+		}
+	case "enter":
+		if len(m.actionOptions) == 0 {
+			return m, nil
+		}
 		m.screen = screenServerDetail
-		switch *m.actionMenuChoice {
+		switch m.actionOptions[m.actionCursor].value {
 		case "disable":
 			return m, m.startPeerAction(m.selectedPeer, "disable")
 		case "enable":
@@ -220,25 +243,59 @@ func (m *model) updateActionMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.startPeerAction(m.selectedPeer, "revoke")
 		case "export":
 			return m.startExportForm()
+		case "qr":
+			m.showStoredProfile("qr")
+			return m, nil
 		}
-		return m, nil
-	case huh.StateAborted:
+	case "esc", "q":
 		m.screen = screenServerDetail
-		return m, nil
 	}
-	return m, cmd
+	return m, nil
 }
 
 func (m *model) viewActionMenu() string {
 	p := m.selectedPeer
-	card := titleStyle.Render("Peer actions") + "\n\n" +
+	var menu strings.Builder
+	menu.WriteString(accentHeadingStyle.Render("Actions for "+p.Name) + "\n\n")
+	for i, option := range m.actionOptions {
+		label := "  " + option.label
+		if i == m.actionCursor {
+			label = "▶ " + option.label
+			if option.risk {
+				menu.WriteString(dangerSelectedStyle.Render(label))
+			} else {
+				menu.WriteString(menuSelectedStyle.Render(label))
+			}
+		} else if option.risk {
+			menu.WriteString(dangerStyle.Render(label))
+		} else {
+			menu.WriteString(textStyle.Render(label))
+		}
+		menu.WriteString("\n")
+	}
+	card := accentHeadingStyle.Render("Peer") + "\n\n" +
 		fmt.Sprintf("%s  %s\nVPN IP: %s   Interface: %s\nPublic key: %s\n\n",
 			selectedStyle.Render(p.Name), peerStateBadge(p.State), orDefault(p.VPNIP, "-"),
 			orDefault(p.Interface, "-"), peerview.ShortenKey(p.PublicKey)) +
-		m.actionMenu.View()
+		menu.String()
 	return appHeader(m.selected.DisplayName+" / Peers") + "\n" +
-		panelStyle.Width(min(82, max(54, m.width-4))).Render(card) + "\n" +
-		keyBar("↑/↓ Select", "Enter Continue", "Esc Cancel", "F10 Quit")
+		fullPanel(m, card) + "\n" +
+		keyBar("↑/↓ Select", "Enter Continue", "Esc Back", "Ctrl+C Quit")
+}
+
+func (m *model) showStoredProfile(mode string) {
+	meta, ok := m.vault.GetPeerByName(m.selected.ID, m.selectedPeer.Name)
+	if !ok {
+		m.setError(fmt.Errorf("peer %q not found", m.selectedPeer.Name))
+		return
+	}
+	profile, ok := m.vault.GetProfile(m.selected.ID, meta.PublicKey)
+	if !ok {
+		m.setError(fmt.Errorf("no local profile stored for %q", meta.Name))
+		return
+	}
+	m.revealName, m.revealProfile, m.revealMode = meta.Name, profile, mode
+	m.screen = screenPeerReveal
 }
 
 // startPeerAction covers disable/enable/rotate/revoke, which all share the
@@ -260,7 +317,7 @@ func (m *model) startPeerAction(peer peerview.Peer, action string) tea.Cmd {
 	sess := m.detailSession
 	if sess == nil || sess.closed {
 		return func() tea.Msg {
-			return planReadyMsg{err: fmt.Errorf("server session is not connected; return to Overview and press F5"), cancelScreen: screenServerDetail}
+			return planReadyMsg{err: fmt.Errorf("server session is not connected; return to Overview and press r"), cancelScreen: screenServerDetail}
 		}
 	}
 	return func() tea.Msg {
@@ -317,7 +374,7 @@ func (m *model) applyDisable(serverID string, meta profilevault.PeerMetadata, cc
 		return func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
-			outcome, rawBlock, err := peerops.DisablePeer(ctx, sess.client, sess.prompts, cc, meta.PublicKey)
+			_, rawBlock, err := peerops.DisablePeer(ctx, sess.client, sess.prompts, cc, meta.PublicKey)
 			if err != nil {
 				return actionDoneMsg{err: err}
 			}
@@ -327,12 +384,12 @@ func (m *model) applyDisable(serverID string, meta profilevault.PeerMetadata, cc
 				meta.Interface = iface
 				m.vault.UpdatePeer(meta)
 				if err := m.vault.Save(m.vaultPath); err != nil {
-					m.setError(fmt.Errorf("applied on the server (backup: %s) but failed to save locally: %w", outcome.BackupPath, err))
+					m.setError(fmt.Errorf("access was paused on the server, but local metadata could not be saved: %w", err))
 					return nil
 				}
-				m.setStatus("Disabled " + meta.Name + ". Backup: " + outcome.BackupPath)
+				m.setStatus("Paused " + meta.Name + ". Server access removed; local profile kept.")
 				m.peersLoaded = false
-				return nil
+				return m.loadPeersFromSessionCmd()
 			}}
 		}
 	}
@@ -344,7 +401,7 @@ func (m *model) applyEnable(serverID string, meta profilevault.PeerMetadata, cc 
 		return func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
-			outcome, err := peerops.EnablePeer(ctx, sess.client, sess.prompts, cc, meta.DisabledBlockRaw)
+			_, err := peerops.EnablePeer(ctx, sess.client, sess.prompts, cc, meta.DisabledBlockRaw)
 			if err != nil {
 				return actionDoneMsg{err: err}
 			}
@@ -354,12 +411,12 @@ func (m *model) applyEnable(serverID string, meta profilevault.PeerMetadata, cc 
 				meta.Interface = iface
 				m.vault.UpdatePeer(meta)
 				if err := m.vault.Save(m.vaultPath); err != nil {
-					m.setError(fmt.Errorf("applied on the server (backup: %s) but failed to save locally: %w", outcome.BackupPath, err))
+					m.setError(fmt.Errorf("access was resumed on the server, but local metadata could not be saved: %w", err))
 					return nil
 				}
-				m.setStatus("Resumed " + meta.Name + ". Backup: " + outcome.BackupPath)
+				m.setStatus("Resumed " + meta.Name + ". Server access restored.")
 				m.peersLoaded = false
-				return nil
+				return m.loadPeersFromSessionCmd()
 			}}
 		}
 	}
@@ -392,12 +449,12 @@ func (m *model) applyRotate(serverID string, meta profilevault.PeerMetadata, cc 
 				meta.Interface = iface
 				_ = m.vault.AddPeer(meta)
 				if err := m.vault.Save(m.vaultPath); err != nil {
-					m.setError(fmt.Errorf("applied on the server (backup: %s) but failed to save locally: %w", result.Outcome.BackupPath, err))
+					m.setError(fmt.Errorf("keys were rotated on the server, but the local profile could not be saved: %w", err))
 					return nil
 				}
-				m.setStatus(fmt.Sprintf("Rotated %s: %s -> %s. Backup: %s", meta.Name, peerview.ShortenKey(oldKey), peerview.ShortenKey(result.KeyPair.PublicKey), result.Outcome.BackupPath))
+				m.setStatus(fmt.Sprintf("Rotated %s: %s → %s. New local profile saved.", meta.Name, peerview.ShortenKey(oldKey), peerview.ShortenKey(result.KeyPair.PublicKey)))
 				m.peersLoaded = false
-				return nil
+				return m.loadPeersFromSessionCmd()
 			}}
 		}
 	}
@@ -421,7 +478,7 @@ func (m *model) startRevoke(s domain.Server, meta profilevault.PeerMetadata) tea
 	sess := m.detailSession
 	if sess == nil || sess.closed {
 		return func() tea.Msg {
-			return planReadyMsg{err: fmt.Errorf("server session is not connected; return to Overview and press F5"), cancelScreen: screenServerDetail}
+			return planReadyMsg{err: fmt.Errorf("server session is not connected; return to Overview and press r"), cancelScreen: screenServerDetail}
 		}
 	}
 	return func() tea.Msg {
@@ -450,15 +507,13 @@ func (m *model) applyRevoke(serverID string, meta profilevault.PeerMetadata, ses
 		deleteMetadata := m.revokeDeleteMetadata
 		revokeAccess := m.revokeYes
 		return func() tea.Msg {
-			var backupPath string
 			if revokeAccess && sess != nil {
 				ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 				defer cancel()
-				outcome, err := peerops.RevokePeer(ctx, sess.client, sess.prompts, cc, meta.PublicKey)
+				_, err := peerops.RevokePeer(ctx, sess.client, sess.prompts, cc, meta.PublicKey)
 				if err != nil {
 					return actionDoneMsg{err: err}
 				}
-				backupPath = outcome.BackupPath
 			}
 			return actionDoneMsg{done: func(m *model) tea.Cmd {
 				if deleteProfile {
@@ -475,12 +530,19 @@ func (m *model) applyRevoke(serverID string, meta profilevault.PeerMetadata, ses
 					m.setError(fmt.Errorf("change applied but failed to save locally: %w", err))
 					return nil
 				}
-				m.setStatus(fmt.Sprintf("Revoked %s. profile_deleted=%v metadata_deleted=%v. Backup: %s", meta.Name, deleteProfile, deleteMetadata, backupPath))
+				m.setStatus(fmt.Sprintf("Revoked %s. Server access: removed · Local profile: %s · Metadata: %s.", meta.Name, deletedLabel(deleteProfile), deletedLabel(deleteMetadata)))
 				m.peersLoaded = false
-				return nil
+				return m.loadPeersFromSessionCmd()
 			}}
 		}
 	}
+}
+
+func deletedLabel(deleted bool) string {
+	if deleted {
+		return "deleted"
+	}
+	return "kept"
 }
 
 func newRevokeForm(m *model) *huh.Form {
@@ -511,8 +573,7 @@ func (m *model) updateRevokeConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenApplying
 		return m, m.onConfirmed(m)
 	case huh.StateAborted:
-		m.activeSession.close()
-		m.activeSession = nil
+		m.releaseActiveSession()
 		m.screen = m.onCancelled
 		return m, nil
 	}
@@ -520,18 +581,26 @@ func (m *model) updateRevokeConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) viewRevokeConfirm() string {
-	return titleStyle.Render("wgtui") + "  " + subtitleStyle.Render(m.confirmTitle) + "\n\n" + m.revokeForm.View()
+	return formScreen(m, m.confirmTitle, m.revokeForm.View(), "Esc Cancel", "Ctrl+C Quit")
 }
 
 func (m *model) startExportForm() (tea.Model, tea.Cmd) {
-	m.exportPath = ""
+	home, err := os.UserHomeDir()
+	if err != nil {
+		m.setError(fmt.Errorf("resolve home directory: %w", err))
+		return m, nil
+	}
+	m.exportPath = safeProfileFilename(m.selectedPeer.Name)
 	m.exportForm = huh.NewForm(huh.NewGroup(
-		huh.NewInput().Title("Export " + m.selectedPeer.Name + " to").
-			Description("File path to write the client profile to.").
+		huh.NewInput().Title("Save " + m.selectedPeer.Name + " in " + home).
+			Description("File name only. The secret profile is written with mode 0600.").
 			Value(&m.exportPath).
 			Validate(func(s string) error {
-				if s == "" {
+				if s == "" || s == "." || s == ".." {
 					return errRequired
+				}
+				if filepath.Base(s) != s || strings.ContainsAny(s, `/\`) {
+					return fieldErr("enter a file name, not a path")
 				}
 				return nil
 			}),
@@ -547,7 +616,12 @@ func (m *model) updateExportForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.exportForm.State {
 	case huh.StateCompleted:
 		m.screen = screenServerDetail
-		m.exportPeer(m.exportPath)
+		home, err := os.UserHomeDir()
+		if err != nil {
+			m.setError(err)
+			return m, nil
+		}
+		m.exportPeer(filepath.Join(home, m.exportPath))
 		return m, nil
 	case huh.StateAborted:
 		m.screen = screenServerDetail
@@ -556,8 +630,28 @@ func (m *model) updateExportForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func safeProfileFilename(name string) string {
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(name) {
+		switch {
+		case unicode.IsLetter(r), unicode.IsNumber(r), r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+		if b.Len() >= 72 {
+			break
+		}
+	}
+	base := strings.Trim(b.String(), "._")
+	if base == "" {
+		base = "wireguard-peer"
+	}
+	return base + ".conf"
+}
+
 func (m *model) viewExportForm() string {
-	return titleStyle.Render("wgtui") + "\n\n" + m.exportForm.View()
+	return formScreen(m, "Save client profile", m.exportForm.View(), "Esc Cancel", "Ctrl+C Quit")
 }
 
 func (m *model) exportPeer(path string) {
@@ -571,11 +665,23 @@ func (m *model) exportPeer(path string) {
 		m.setError(fmt.Errorf("no local profile stored for %q", meta.Name))
 		return
 	}
-	if _, err := os.Stat(path); err == nil {
-		m.setError(fmt.Errorf("%s already exists", path))
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			m.setError(fmt.Errorf("%s already exists", path))
+		} else {
+			m.setError(err)
+		}
 		return
 	}
-	if err := os.WriteFile(path, []byte(profile), 0o600); err != nil {
+	if _, err := f.WriteString(profile); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		m.setError(err)
+		return
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(path)
 		m.setError(err)
 		return
 	}

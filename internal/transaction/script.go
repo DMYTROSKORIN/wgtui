@@ -23,15 +23,17 @@ var validInterfaceName = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,15}$`)
 //  1. acquire an interface-scoped lock (atomic mkdir, §15.3)
 //  2. re-check the config's fingerprint against what Apply's caller last
 //     read (TOCTOU guard, step 3)
-//  3. timestamped backup (step 4)
+//  3. timestamped temporary recovery copy (step 4)
 //  4. write the new content to a temp file on the same filesystem (step 5)
 //  5. preserve the original owner/mode (step 6)
 //  6. validate with `wg-quick strip` before it's live (step 7)
 //  7. atomically rename into place (step 8)
 //  8. apply with `wg syncconf`, which - fed a stripped config - doesn't
 //     disconnect peers that didn't change (step 9)
-//  9. on apply failure, restore the backup and try to re-sync it (step 11)
-//  10. release the lock via `trap ... EXIT` regardless of outcome (step 12)
+//  9. on apply failure, restore the recovery copy and try to re-sync it (step 11)
+//  10. remove the temporary rollback copy after success or a verified rollback;
+//     retain it only when automatic recovery itself fails
+//  11. release the lock via `trap ... EXIT` regardless of outcome (step 12)
 //
 // The new config content is embedded via a heredoc with a random
 // delimiter so it never needs shell-escaping itself; RunSudoScript then
@@ -62,7 +64,13 @@ func buildScript(plan Plan) (string, error) {
 	fmt.Fprintf(&b, "CONF=%s\n", shellSingleQuote(plan.ConfigPath))
 	b.WriteString(`LOCKDIR="/run/lock/wgtui-$IFACE.lock"` + "\n")
 	b.WriteString(`if ! mkdir "$LOCKDIR" 2>/dev/null; then echo WGTUI_LOCK_FAILED; exit 1; fi` + "\n")
-	b.WriteString(`trap 'rmdir "$LOCKDIR" 2>/dev/null' EXIT` + "\n")
+	b.WriteString(`BACKUP=""; TMP=""; TMPDIR=""; KEEP_BACKUP=0` + "\n")
+	b.WriteString(`cleanup() { rc=$?; rm -f "$TMP" /tmp/wgtui-verr.$$ /tmp/wgtui-aerr.$$ 2>/dev/null || true; ` +
+		`[ -z "$TMPDIR" ] || rmdir "$TMPDIR" 2>/dev/null || true; ` +
+		`if [ "$KEEP_BACKUP" -eq 0 ]; then [ -z "$BACKUP" ] || rm -f "$BACKUP" || true; ` +
+		`else echo "WGTUI_RECOVERY_REQUIRED $BACKUP"; fi; ` +
+		`rmdir "$LOCKDIR" 2>/dev/null || true; return "$rc"; }` + "\n")
+	b.WriteString(`trap cleanup EXIT` + "\n")
 
 	b.WriteString(`CURRENT_SUM=$(sha256sum "$CONF" 2>/dev/null | cut -d' ' -f1)` + "\n")
 	fmt.Fprintf(&b, "if [ \"$CURRENT_SUM\" != %s ]; then echo WGTUI_FINGERPRINT_MISMATCH; exit 1; fi\n", shellSingleQuote(plan.ExpectedFingerprint))
@@ -101,12 +109,15 @@ func buildScript(plan Plan) (string, error) {
 		`echo WGTUI_VALIDATE_FAILED; cat /tmp/wgtui-verr.$$ 1>&2; rm -f /tmp/wgtui-verr.$$ "$TMP"; exit 1; fi` + "\n")
 	b.WriteString(`rm -f /tmp/wgtui-verr.$$` + "\n")
 
+	b.WriteString(`KEEP_BACKUP=1` + "\n")
 	b.WriteString(`mv "$TMP" "$CONF"` + "\n")
 
 	b.WriteString(`if wg syncconf "$IFACE" <(wg-quick strip "$CONF") 2>/tmp/wgtui-aerr.$$; then ` +
-		`rm -f /tmp/wgtui-aerr.$$; echo "WGTUI_OK $BACKUP"; ` +
-		`else cp -p "$BACKUP" "$CONF"; wg syncconf "$IFACE" <(wg-quick strip "$CONF") 2>>/tmp/wgtui-aerr.$$ || true; ` +
-		`echo WGTUI_APPLY_FAILED_ROLLED_BACK; cat /tmp/wgtui-aerr.$$ 1>&2; rm -f /tmp/wgtui-aerr.$$; exit 1; fi` + "\n")
+		`KEEP_BACKUP=0; echo WGTUI_OK; ` +
+		`else cp -p "$BACKUP" "$CONF"; ` +
+		`if wg syncconf "$IFACE" <(wg-quick strip "$CONF") 2>>/tmp/wgtui-aerr.$$; then ` +
+		`KEEP_BACKUP=0; echo WGTUI_APPLY_FAILED_ROLLED_BACK; fi; ` +
+		`cat /tmp/wgtui-aerr.$$ 1>&2; rm -f /tmp/wgtui-aerr.$$; exit 1; fi` + "\n")
 
 	return b.String(), nil
 }
