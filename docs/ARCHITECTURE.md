@@ -218,6 +218,11 @@ Both are thin front ends over one shared, structured request/response API (spec 
 behavior cannot drift between the two. Command surface for `cli` is spec §21; screens for
 `tui` are spec §20.
 
+The TUI layout has three responsive tiers: a single panel on narrow terminals, a
+server-sidebar/content pair on normal terminals, and Servers/Peers/Selected peer panels
+on wide terminals. Peer table widths are derived from the actual panel width, and
+`peerops.DefaultDNS` is the shared client-profile DNS default used by TUI, CLI and MCP.
+
 **Stage 4: reconciliation.** `peer list` merges the runtime `wg show all dump` result with
 the local metadata registry (`reconcilePeers`, pure/network-free): a peer wgtui knows about
 shows its real name and `managed_by_wgtui: true`; anything else is "unmanaged" (spec

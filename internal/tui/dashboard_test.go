@@ -7,8 +7,10 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/domain"
+	"github.com/DMYTROSKORIN/wgtui/internal/peerops"
 	"github.com/DMYTROSKORIN/wgtui/internal/peerview"
 	"github.com/DMYTROSKORIN/wgtui/internal/profilevault"
 )
@@ -43,6 +45,69 @@ func TestPeerDashboardShowsReadableTrafficAndSelectedCard(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Errorf("peer dashboard does not contain %q:\n%s", want, view)
 		}
+	}
+}
+
+func TestWidePeerDashboardUsesThreePanelsAndRuntimeDetails(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office", SSHHostOrAlias: "vpn.example.test"})
+	m.screen, m.tab = screenServerDetail, tabPeers
+	m.selected = domain.Server{ID: "office", DisplayName: "Office", SSHHostOrAlias: "vpn.example.test"}
+	m.peersLoaded = true
+	m.peers = []peerview.Peer{{
+		Name: "Alice", Interface: "wg0", VPNIP: "10.10.0.2/32", PublicKey: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH",
+		Endpoint: "198.51.100.7:51820", PresharedKeyPresent: true, State: "online", Managed: true, ProfileAvailable: true,
+	}}
+	m.Update(tea.WindowSizeMsg{Width: 210, Height: 34})
+	m.rebuildPeerTable()
+	view := m.View()
+	for _, want := range []string{"Servers", "Peers", "Selected peer", "Endpoint", "198.51.100.7:51820", "secret hidden", "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("wide dashboard does not contain %q:\n%s", want, view)
+		}
+	}
+	servers, peers, inspector := widePeerPanelWidths(210)
+	if servers+peers+inspector+8 != 210 {
+		t.Fatalf("wide panel widths consume %d cells, want 210", servers+peers+inspector+8)
+	}
+	if len(m.peerTable.Columns()) != 6 {
+		t.Fatalf("wide peer table has %d columns, want 6", len(m.peerTable.Columns()))
+	}
+	lines := strings.Split(view, "\n")
+	for i, line := range lines {
+		if width := lipgloss.Width(line); width > 210 {
+			t.Fatalf("wide dashboard line %d is %d cells wide, terminal is 210:\n%s", i+1, width, line)
+		}
+	}
+	if len(lines) > 34 {
+		t.Fatalf("wide dashboard is %d lines tall, terminal is 34", len(lines))
+	}
+}
+
+func TestPeerFormDefaultsToGoogleDNS(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office"})
+	m.selected = domain.Server{ID: "office"}
+	m.startPeerForm()
+	if m.pfDNS != peerops.DefaultDNSCSV {
+		t.Fatalf("pfDNS = %q, want %q", m.pfDNS, peerops.DefaultDNSCSV)
+	}
+}
+
+func TestPeerRefreshKeepsRowsVisibleWithActivityStatus(t *testing.T) {
+	m := testModel(t)
+	m.peersLoaded = true
+	m.peers = []peerview.Peer{{Name: "Alice", State: "idle"}}
+	m.rebuildPeerTable()
+	_ = m.loadPeersFromSessionCmd()
+	view := m.viewPeerList()
+	if !strings.Contains(view, "Refreshing peer state") || !strings.Contains(view, "Alice") {
+		t.Fatalf("refresh should retain rows and show activity:\n%s", view)
+	}
+}
+
+func TestPeerRuntimeValuesCannotInjectTerminalControls(t *testing.T) {
+	got := terminalText("Alice\x1b[31m host\x1b]52;c;secret\a:51820")
+	if strings.ContainsAny(got, "\x1b\a") {
+		t.Fatalf("terminalText retained control characters: %q", got)
 	}
 }
 

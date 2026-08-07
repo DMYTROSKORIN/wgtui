@@ -104,7 +104,7 @@ func runPeerAdd(args []string, stdout, stderr io.Writer) int {
 	fullTunnel := fs.Bool("full-tunnel", true, "client routes all traffic through the tunnel")
 	splitTunnel := fs.String("split-tunnel", "", "comma-separated CIDRs to route through the tunnel instead of full-tunnel")
 	keepalive := fs.Int("keepalive", 25, "PersistentKeepalive seconds (0 to omit)")
-	dns := fs.String("dns", "", "comma-separated DNS servers for the client profile")
+	dns := fs.String("dns", peerops.DefaultDNSCSV, "comma-separated DNS servers for the client profile")
 	endpointHost := fs.String("endpoint-host", "", "VPN endpoint hostname/IP, if different from the SSH host")
 	noPSK := fs.Bool("no-psk", false, "do not generate a preshared key (on by default, SPEC.md §30.8)")
 	output := fs.String("output", "", "also write the client .conf to this path")

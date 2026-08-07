@@ -17,7 +17,7 @@ import (
 )
 
 func (m *model) startPeerForm() {
-	m.pfName, m.pfSplitCIDRs, m.pfKeepalive, m.pfDNS, m.pfEndpointHost = "", "", "25", "", ""
+	m.pfName, m.pfSplitCIDRs, m.pfKeepalive, m.pfDNS, m.pfEndpointHost = "", "", "25", peerops.DefaultDNSCSV, ""
 	m.pfFullTunnel, m.pfPSK = true, true
 	serverID := m.selected.ID
 
@@ -58,7 +58,7 @@ func (m *model) startPeerForm() {
 					}
 					return nil
 				}),
-			huh.NewInput().Title("DNS servers").Description("Optional, comma-separated.").Value(&m.pfDNS),
+			huh.NewInput().Title("DNS servers").Description("Google DNS by default; comma-separated.").Value(&m.pfDNS),
 			huh.NewInput().Title("Endpoint host").Description("Optional - defaults to the server's SSH host.").Value(&m.pfEndpointHost),
 			huh.NewConfirm().Title("Add an extra preshared key (recommended)?").
 				Description("Optional 256-bit secret mixed into WireGuard's normal public-key handshake.").
@@ -197,7 +197,6 @@ func (m *model) applyPeerAdd(p peerAddParams) func(*model) tea.Cmd {
 					m.setError(fmt.Errorf("peer was created on the server, but its local encrypted profile could not be saved: %w", err))
 					return nil
 				}
-				m.peersLoaded = false
 				m.revealName = p.name
 				m.revealProfile = clientConf
 				m.revealMode = ""

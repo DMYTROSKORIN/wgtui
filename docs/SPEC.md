@@ -492,7 +492,7 @@ kernel/module support доступен
 - endpoint hostname/IP;
 - outbound interface;
 - режим по умолчанию: full tunnel или split tunnel;
-- DNS для клиентских профилей; по умолчанию обязательно `1.1.1.1, 1.0.0.1`, с возможностью явной замены пользователем;
+- DNS для клиентских профилей; по умолчанию Google Public DNS `8.8.8.8, 8.8.4.4`, с возможностью явной замены пользователем;
 - включение forwarding;
 - NAT для full tunnel;
 - автозапуск;
@@ -726,7 +726,7 @@ server-id + public-key -> name, notes, profile path, created_at, status
 - автоматический или ручной VPN-адрес;
 - full/split tunnel;
 - дополнительные AllowedIPs;
-- DNS, обязательное значение по умолчанию `1.1.1.1, 1.0.0.1`, которое пользователь может осознанно заменить;
+- DNS, значение по умолчанию `8.8.8.8, 8.8.4.4`, которое пользователь может осознанно заменить;
 - PersistentKeepalive;
 - срок действия optional, только как metadata в MVP;
 - путь локального экспорта;
@@ -809,7 +809,7 @@ Private key при этом не передаётся серверу и не в�
 Full tunnel IPv4/IPv6 leak protection:
 
 ```ini
-DNS = 1.1.1.1, 1.0.0.1
+DNS = 8.8.8.8, 8.8.4.4
 AllowedIPs = 0.0.0.0/0, ::/0
 ```
 

@@ -11,7 +11,7 @@ import (
 func TestReconcile_ManagedGetsRealName(t *testing.T) {
 	now := time.Now()
 	dump := []wgconfig.RuntimePeer{
-		{Interface: "wg0", PublicKey: "pub1", AllowedIPs: []string{"10.10.0.2/32"}},
+		{Interface: "wg0", PublicKey: "pub1", Endpoint: "198.51.100.7:51820", PresharedKeyPresent: true, AllowedIPs: []string{"10.10.0.2/32"}},
 	}
 	local := []profilevault.PeerMetadata{
 		{PublicKey: "pub1", Name: "Alex", Status: profilevault.PeerStatusActive, Interface: "wg0"},
@@ -24,6 +24,9 @@ func TestReconcile_ManagedGetsRealName(t *testing.T) {
 	v := views[0]
 	if v.Name != "Alex" || !v.Managed || !v.ProfileAvailable || v.Interface != "wg0" {
 		t.Errorf("unexpected view: %+v", v)
+	}
+	if v.Endpoint != "198.51.100.7:51820" || !v.PresharedKeyPresent {
+		t.Errorf("runtime details were not carried into the view: %+v", v)
 	}
 }
 

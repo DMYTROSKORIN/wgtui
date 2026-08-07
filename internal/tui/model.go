@@ -430,7 +430,6 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r", "f5":
 		switch m.tab {
 		case tabPeers:
-			m.peersLoaded = false
 			return m, m.loadPeersFromSessionCmd()
 		case tabDiagnose:
 			m.checks = diagnostics.BuildChecks(m.report, m.vault.ListPeers(m.selected.ID), time.Now())

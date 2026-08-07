@@ -12,6 +12,15 @@ import (
 	"github.com/DMYTROSKORIN/wgtui/internal/wgconfig"
 )
 
+// DefaultDNSCSV is written into newly generated client profiles unless a
+// caller supplies a different list. Full-tunnel clients must not depend on
+// DNS learned from the physical network after their default route moves into
+// WireGuard.
+const DefaultDNSCSV = "8.8.8.8, 8.8.4.4"
+
+// DefaultDNS returns a fresh slice so callers cannot mutate shared defaults.
+func DefaultDNS() []string { return []string{"8.8.8.8", "8.8.4.4"} }
+
 // ClientProfileParams holds everything needed to render a client-side
 // .conf - this is the file the *client* imports into their own WireGuard
 // app, distinct from the server-side [Peer] block wgconfig.BuildPeerBlock
@@ -72,8 +81,8 @@ func RenderQRTerminal(confText string) (string, error) {
 // RotateProfileParams recovers the client-facing profile parameters
 // (endpoint, client AllowedIPs, DNS) that live only in the *client*
 // profile, not the server-side block, by re-parsing the peer's previous
-// profile if one was stored. Falls back to sane defaults (full tunnel, no
-// DNS, endpoint = the given default host) if there wasn't one - e.g.
+// profile if one was stored. Falls back to sane defaults (full tunnel,
+// Google DNS, endpoint = the given default host) if there wasn't one - e.g.
 // rotating a peer that was imported without ever having a local profile.
 // Shared by cli and mcpserver, which both drive peer rotate.
 func RotateProfileParams(oldProfile string, had bool, serverAllowedIPs []string, defaultHost string, defaultPort int) (addr netip.Addr, host string, port int, clientAllowedIPs, dns []string) {
@@ -85,7 +94,7 @@ func RotateProfileParams(oldProfile string, had bool, serverAllowedIPs []string,
 		}
 	}
 	if !had {
-		return addr, host, port, clientAllowedIPs, dns
+		return addr, host, port, clientAllowedIPs, DefaultDNS()
 	}
 	doc := wgconfig.Parse(oldProfile)
 	if peerBlk, ok := doc.FirstPeerBlock(); ok {
@@ -103,6 +112,9 @@ func RotateProfileParams(oldProfile string, had bool, serverAllowedIPs []string,
 	}
 	if ifaceBlk, ok := doc.InterfaceBlock(); ok {
 		dns = SplitTrim(ifaceBlk.Value("DNS"), ",")
+	}
+	if len(dns) == 0 {
+		dns = DefaultDNS()
 	}
 	return addr, host, port, clientAllowedIPs, dns
 }

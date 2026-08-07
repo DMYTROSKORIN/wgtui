@@ -22,46 +22,109 @@ import (
 )
 
 func (m *model) rebuildPeerTable() {
-	available := m.width - 8
-	if m.width >= 100 {
-		available = m.width - clamp(m.width/4, 22, 30) - 9
-	}
-	nameWidth := clamp(available/6, 12, 16)
-	vpnWidth := clamp(available/5, 14, 17)
-	trafficWidth := clamp(available/4, 19, 22)
-	cols := []table.Column{
-		{Title: "Peer", Width: nameWidth},
-		{Title: "VPN IP", Width: vpnWidth},
-		{Title: "State", Width: 12},
-		{Title: "Last seen", Width: 9},
-		{Title: "Traffic ↓ / ↑", Width: trafficWidth},
+	available := m.peerTableAvailableWidth()
+	wideColumns := available >= 95
+	var cols []table.Column
+	if wideColumns {
+		budget := available - 6
+		nameWidth := max(14, budget*16/100)
+		vpnWidth := max(14, budget*15/100)
+		stateWidth := max(12, budget*13/100)
+		seenWidth := max(12, budget*14/100)
+		endpointWidth := max(18, budget*22/100)
+		trafficWidth := max(19, budget-nameWidth-vpnWidth-stateWidth-seenWidth-endpointWidth)
+		cols = []table.Column{
+			{Title: "Peer", Width: nameWidth},
+			{Title: "VPN IP", Width: vpnWidth},
+			{Title: "State", Width: stateWidth},
+			{Title: "Last seen", Width: seenWidth},
+			{Title: "Endpoint", Width: endpointWidth},
+			{Title: "Traffic ↓ / ↑", Width: trafficWidth},
+		}
+	} else {
+		budget := max(60, available-5)
+		nameWidth := max(12, budget*19/100)
+		vpnWidth := max(14, budget*20/100)
+		stateWidth := max(12, budget*17/100)
+		seenWidth := max(12, budget*16/100)
+		trafficWidth := max(19, budget-nameWidth-vpnWidth-stateWidth-seenWidth)
+		cols = []table.Column{
+			{Title: "Peer", Width: nameWidth},
+			{Title: "VPN IP", Width: vpnWidth},
+			{Title: "State", Width: stateWidth},
+			{Title: "Last seen", Width: seenWidth},
+			{Title: "Traffic ↓ / ↑", Width: trafficWidth},
+		}
 	}
 	rows := make([]table.Row, 0, len(m.peers))
 	for _, p := range m.peers {
-		handshake := "never"
-		if p.LatestHandshakeSeconds != nil {
-			handshake = fmt.Sprintf("%ds ago", *p.LatestHandshakeSeconds)
+		row := table.Row{
+			terminalText(p.Name), orDefault(terminalText(p.VPNIP), "-"), stateLabel(p), formatHandshakeAge(p.LatestHandshakeSeconds),
 		}
-		rows = append(rows, table.Row{
-			p.Name, orDefault(p.VPNIP, "-"), stateLabel(p), handshake,
-			fmt.Sprintf("%s / %s", formatBytes(p.RxBytes), formatBytes(p.TxBytes)),
-		})
+		if wideColumns {
+			row = append(row, orDefault(terminalText(p.Endpoint), "-"))
+		}
+		row = append(row, fmt.Sprintf("%s / %s", formatBytes(p.RxBytes), formatBytes(p.TxBytes)))
+		rows = append(rows, row)
 	}
 
 	styles := table.DefaultStyles()
 	styles.Header = styles.Header.Foreground(colorMuted).Bold(true)
 	styles.Selected = styles.Selected.Foreground(colorHighlight).Bold(true)
 
+	tableHeight := min(max(3, len(rows)+1), max(5, m.height-16))
+	if m.width >= 160 {
+		tableHeight = max(5, m.height-12)
+	}
 	m.peerTable = table.New(
 		table.WithColumns(cols),
 		table.WithRows(rows),
 		table.WithFocused(true),
-		table.WithHeight(min(max(3, len(rows)+1), max(5, m.height-16))),
+		table.WithHeight(tableHeight),
 		table.WithStyles(styles),
 	)
 }
 
+// terminalText removes control characters from server- and user-derived
+// values before rendering. In particular, an endpoint or imported peer name
+// containing ESC must not be able to inject terminal commands or recolor the
+// surrounding UI.
+func terminalText(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, value)
+}
+
+func (m *model) peerTableAvailableWidth() int {
+	if m.width >= 160 {
+		_, peersWidth, _ := widePeerPanelWidths(m.width)
+		return max(60, peersWidth-4)
+	}
+	if m.width >= 100 {
+		return max(60, m.width-clamp(m.width/4, 22, 30)-9)
+	}
+	return max(60, m.width-8)
+}
+
+func widePeerPanelWidths(total int) (servers, peers, inspector int) {
+	servers = clamp(total/5, 24, 30)
+	inspector = clamp(total/4, 40, 54)
+	peers = max(60, total-servers-inspector-8)
+	return
+}
+
 func (m *model) viewPeersTab() string {
+	list := m.viewPeerList()
+	if m.peersLoaded && m.peersErr == "" && len(m.peers) > 0 {
+		list += "\n\n" + m.viewSelectedPeerCard()
+	}
+	return list
+}
+
+func (m *model) viewPeerList() string {
 	switch {
 	case !m.peersLoaded:
 		return warningStyle.Render("↻ Loading peers from the server…") + "\n"
@@ -74,7 +137,24 @@ func (m *model) viewPeersTab() string {
 		if m.peersRefreshing {
 			activity = warningStyle.Render("↻ Refreshing peer state…") + "\n\n"
 		}
-		return activity + m.peerTable.View() + "\n\n" + m.viewSelectedPeerCard()
+		return activity + m.peerTable.View()
+	}
+}
+
+func formatHandshakeAge(seconds *int64) string {
+	if seconds == nil {
+		return "never"
+	}
+	s := max(int(*seconds), 0)
+	switch {
+	case s < 60:
+		return fmt.Sprintf("%ds ago", s)
+	case s < 3600:
+		return fmt.Sprintf("%dm ago", s/60)
+	case s < 48*3600:
+		return fmt.Sprintf("%dh %dm ago", s/3600, (s%3600)/60)
+	default:
+		return fmt.Sprintf("%dd %dh ago", s/(24*3600), (s%(24*3600))/3600)
 	}
 }
 
@@ -120,8 +200,43 @@ func (m *model) viewSelectedPeerCard() string {
 	}
 	return titleStyle.Render("Selected peer") + "\n" +
 		fmt.Sprintf("%s  %s\nInterface: %s   Public key: %s\nProfile: %s",
-			selectedStyle.Render(p.Name), peerStateBadge(p.State), orDefault(p.Interface, "-"), peerview.ShortenKey(p.PublicKey), profile) +
+			selectedStyle.Render(terminalText(p.Name)), peerStateBadge(p.State), orDefault(terminalText(p.Interface), "-"), terminalText(peerview.ShortenKey(p.PublicKey)), profile) +
 		"\n" + dimStyle.Render(managed+" · Enter opens available actions")
+}
+
+func (m *model) viewSelectedPeerInspector() string {
+	row := m.peerTable.Cursor()
+	if !m.peersLoaded {
+		return accentHeadingStyle.Render("Selected peer") + "\n\n" + dimStyle.Render("Waiting for peer data…")
+	}
+	if m.peersErr != "" {
+		return accentHeadingStyle.Render("Selected peer") + "\n\n" + dangerStyle.Render("Peer data unavailable")
+	}
+	if row < 0 || row >= len(m.peers) {
+		return accentHeadingStyle.Render("Selected peer") + "\n\n" + dimStyle.Render("No peer selected")
+	}
+	p := m.peers[row]
+	profile := "Not available"
+	if p.ProfileAvailable {
+		profile = "Encrypted in local vault"
+	}
+	ownership := "Unmanaged · read-only"
+	if p.Managed {
+		ownership = "Managed by wgtui"
+	}
+	psk := "No"
+	if p.State == "disabled" {
+		psk = "Not active"
+	} else if p.PresharedKeyPresent {
+		psk = "Yes · secret hidden"
+	}
+	return accentHeadingStyle.Render("Selected peer") + "\n\n" +
+		selectedStyle.Render(terminalText(p.Name)) + "  " + peerStateBadge(p.State) + "\n\n" +
+		fmt.Sprintf("VPN address    %s\nInterface      %s\nEndpoint       %s\nLast handshake %s\nTraffic ↓ / ↑  %s / %s\n\nPublic key\n%s\nPreshared key  %s\nClient profile %s\n%s\n\n",
+			orDefault(terminalText(p.VPNIP), "-"), orDefault(terminalText(p.Interface), "-"), orDefault(terminalText(p.Endpoint), "Not observed"),
+			formatHandshakeAge(p.LatestHandshakeSeconds), formatBytes(p.RxBytes), formatBytes(p.TxBytes),
+			terminalText(p.PublicKey), psk, profile, ownership) +
+		dimStyle.Render("Enter opens actions · r refreshes")
 }
 
 // loadPeersFromSessionCmd refreshes the peer table over the connection
@@ -256,7 +371,7 @@ func (m *model) updateActionMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) viewActionMenu() string {
 	p := m.selectedPeer
 	var menu strings.Builder
-	menu.WriteString(accentHeadingStyle.Render("Actions for "+p.Name) + "\n\n")
+	menu.WriteString(accentHeadingStyle.Render("Actions for "+terminalText(p.Name)) + "\n\n")
 	for i, option := range m.actionOptions {
 		label := "  " + option.label
 		if i == m.actionCursor {
@@ -275,8 +390,8 @@ func (m *model) viewActionMenu() string {
 	}
 	card := accentHeadingStyle.Render("Peer") + "\n\n" +
 		fmt.Sprintf("%s  %s\nVPN IP: %s   Interface: %s\nPublic key: %s\n\n",
-			selectedStyle.Render(p.Name), peerStateBadge(p.State), orDefault(p.VPNIP, "-"),
-			orDefault(p.Interface, "-"), peerview.ShortenKey(p.PublicKey)) +
+			selectedStyle.Render(terminalText(p.Name)), peerStateBadge(p.State), orDefault(terminalText(p.VPNIP), "-"),
+			orDefault(terminalText(p.Interface), "-"), terminalText(peerview.ShortenKey(p.PublicKey))) +
 		menu.String()
 	return appHeader(m.selected.DisplayName+" / Peers") + "\n" +
 		fullPanel(m, card) + "\n" +
@@ -388,7 +503,6 @@ func (m *model) applyDisable(serverID string, meta profilevault.PeerMetadata, cc
 					return nil
 				}
 				m.setStatus("Paused " + meta.Name + ". Server access removed; local profile kept.")
-				m.peersLoaded = false
 				return m.loadPeersFromSessionCmd()
 			}}
 		}
@@ -415,7 +529,6 @@ func (m *model) applyEnable(serverID string, meta profilevault.PeerMetadata, cc 
 					return nil
 				}
 				m.setStatus("Resumed " + meta.Name + ". Server access restored.")
-				m.peersLoaded = false
 				return m.loadPeersFromSessionCmd()
 			}}
 		}
@@ -453,7 +566,6 @@ func (m *model) applyRotate(serverID string, meta profilevault.PeerMetadata, cc 
 					return nil
 				}
 				m.setStatus(fmt.Sprintf("Rotated %s: %s → %s. New local profile saved.", meta.Name, peerview.ShortenKey(oldKey), peerview.ShortenKey(result.KeyPair.PublicKey)))
-				m.peersLoaded = false
 				return m.loadPeersFromSessionCmd()
 			}}
 		}
@@ -531,7 +643,6 @@ func (m *model) applyRevoke(serverID string, meta profilevault.PeerMetadata, ses
 					return nil
 				}
 				m.setStatus(fmt.Sprintf("Revoked %s. Server access: removed · Local profile: %s · Metadata: %s.", meta.Name, deletedLabel(deleteProfile), deletedLabel(deleteMetadata)))
-				m.peersLoaded = false
 				return m.loadPeersFromSessionCmd()
 			}}
 		}

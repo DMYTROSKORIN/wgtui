@@ -17,6 +17,8 @@ no agent, no web UI, no extra open port on the server.
 - Shows interface/peer state, handshake, endpoint, and traffic counters.
 - Generates client keypairs **locally** and hands the server only the public key — a
   ready `.conf` and QR code are produced on your machine, no `scp` involved.
+- Gives new client profiles an editable Google DNS default (`8.8.8.8`, `8.8.4.4`),
+  so full-tunnel clients do not silently depend on their previous network resolver.
 - Adds, pauses, resumes, rotates, and revokes peers, each as a locked,
   verified, rollback-on-failure transaction with an ephemeral recovery copy.
 - Offers a guided first-time server setup when no WireGuard interface exists yet.

@@ -30,10 +30,14 @@ content with a fresh salt. A failed write leaves the old vault usable.
 
 - Server manager: server list on the left, selected connection details on the
   right.
-- Server dashboard: server/session summary on the left and Overview, Peers or
-  Diagnose on the right. Narrow terminals use a single content panel.
-- Peers: readable state, VPN address, handshake age, human-readable traffic,
-  followed by a card explaining the selected peer and available profile.
+- Server dashboard: medium terminals show server/session summary on the left and
+  Overview, Peers or Diagnose on the right. Narrow terminals use one content panel.
+- Wide Peers dashboard: three proportional panels show Servers, a full-height peer
+  table, and a persistent Selected peer inspector. The table gains an Endpoint
+  column when space permits; its other columns grow proportionally instead of
+  leaving an unused rectangle on the right.
+- The inspector shows VPN address, interface, endpoint, readable handshake age,
+  traffic, full public key, hidden PSK presence, profile availability and ownership.
 - Operations: action selection, a secret-free plan, explicit confirmation,
   progress, and a result. Revoke separately asks about server access, the local
   profile and metadata.
@@ -44,6 +48,14 @@ content with a fresh salt. A failed write leaves the old vault usable.
 - Every managed peer whose encrypted profile is available has `Show QR code` and
   `Save client profile to home directory` actions. Exports are mode `0600`, never
   overwrite an existing file, and accept a file name rather than an arbitrary path.
+
+## Client DNS default
+
+New client profiles default to Google Public DNS: `8.8.8.8, 8.8.4.4`. The value is
+visible and editable in the add-peer form and through `--dns`. An explicit DNS is
+important for full-tunnel profiles because the client should not depend on a resolver
+reachable only through its previous physical-network route. Rotation preserves an
+existing profile's DNS and supplies the Google default when the old profile had none.
 
 ## Keyboard contract
 

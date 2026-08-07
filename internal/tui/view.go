@@ -95,6 +95,16 @@ func (m *model) viewServerList() string {
 }
 
 func (m *model) viewServerDetail() string {
+	panelHeight := m.dashboardPanelHeight()
+	if m.width >= 160 && m.tab == tabPeers {
+		serversWidth, peersWidth, inspectorWidth := widePeerPanelWidths(m.width)
+		side := panelStyle.Width(serversWidth).Height(panelHeight).Render(m.viewServerSidebar())
+		peers := panelStyle.Width(peersWidth).Height(panelHeight).Render(tabsLine(m.tab) + "\n\n" + m.viewPeerList())
+		inspector := panelStyle.Width(inspectorWidth).Height(panelHeight).Render(m.viewSelectedPeerInspector())
+		body := lipgloss.JoinHorizontal(lipgloss.Top, side, " ", peers, " ", inspector)
+		return appHeader(m.selected.DisplayName) + "\n" + body + "\n" + footerStyle.Render(detailFooter(m.tab))
+	}
+
 	var content strings.Builder
 	content.WriteString(tabsLine(m.tab) + "\n\n")
 	switch m.tab {
@@ -106,7 +116,6 @@ func (m *model) viewServerDetail() string {
 		content.WriteString(m.viewOverviewTab())
 	}
 
-	panelHeight := m.dashboardPanelHeight()
 	if m.width < 100 {
 		main := panelStyle.Width(max(40, m.width-4)).Height(panelHeight).Render(content.String())
 		return appHeader(m.selected.DisplayName) + "\n" + main + "\n" + footerStyle.Render(detailFooter(m.tab))

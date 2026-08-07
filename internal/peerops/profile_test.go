@@ -94,8 +94,16 @@ func TestRotateProfileParams_NoOldProfile(t *testing.T) {
 	if len(allowedIPs) != 2 || allowedIPs[0] != "0.0.0.0/0" {
 		t.Errorf("allowedIPs = %v, want full-tunnel default", allowedIPs)
 	}
-	if dns != nil {
-		t.Errorf("dns = %v, want nil", dns)
+	if !reflect.DeepEqual(dns, DefaultDNS()) {
+		t.Errorf("dns = %v, want %v", dns, DefaultDNS())
+	}
+}
+
+func TestRotateProfileParams_OldProfileWithoutDNSGetsDefault(t *testing.T) {
+	oldProfile := "[Interface]\nPrivateKey = old\nAddress = 10.10.0.5/32\n\n[Peer]\nPublicKey = server\nEndpoint = example.com:51820\nAllowedIPs = 0.0.0.0/0, ::/0\n"
+	_, _, _, _, dns := RotateProfileParams(oldProfile, true, []string{"10.10.0.5/32"}, "fallback.example", 51820)
+	if !reflect.DeepEqual(dns, DefaultDNS()) {
+		t.Errorf("dns = %v, want %v", dns, DefaultDNS())
 	}
 }
 
