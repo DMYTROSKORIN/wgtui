@@ -37,6 +37,8 @@ const (
 	screenPeerActionMenu
 	screenRevokeConfirm
 	screenPeerExportForm
+	screenChangePassword
+	screenHelp
 )
 
 type detailTab int
@@ -85,7 +87,12 @@ type model struct {
 	statusMsg string // one-line banner shown on return to a screen
 	statusErr bool
 
-	activeSession *session
+	activeSession         *session
+	activeSessionBorrowed bool
+	detailSession         *session
+	width                 int
+	height                int
+	helpReturn            screen
 
 	// server list / add / edit / remove
 	selected   domain.Server
@@ -107,15 +114,20 @@ type model struct {
 	detailErr string
 
 	// peers tab
-	peerTable        table.Model
-	peers            []peerview.Peer
-	peersLoaded      bool
-	peersErr         string
-	selectedPeer     peerview.Peer
-	actionMenu       *huh.Form
-	actionMenuChoice *string
-	exportForm       *huh.Form
-	exportPath       string
+	peerTable       table.Model
+	peers           []peerview.Peer
+	peersLoaded     bool
+	peersRefreshing bool
+	peersErr        string
+	selectedPeer    peerview.Peer
+	actionOptions   []peerActionOption
+	actionCursor    int
+	exportForm      *huh.Form
+	exportPath      string
+	passwordForm    *huh.Form
+	currentPassword string
+	newPassword     string
+	confirmPassword string
 
 	// generic single-step plan/confirm (install, disable, enable, rotate)
 	confirmForm  *huh.Form
@@ -143,6 +155,9 @@ type model struct {
 	revealProfile  string
 	revealName     string
 	revealMode     string
+	revealCursor   int
+	revealNew      bool
+	exportReturn   screen
 
 	// configure wizard form
 	cfForm              *huh.Form
@@ -155,27 +170,79 @@ type model struct {
 	cfDetectedOutbound  string
 
 	// diagnose tab
-	checks       []diagnostics.Check
-	checksLoaded bool
-	checksErr    string
+	checks         []diagnostics.Check
+	checksLoaded   bool
+	checksErr      string
+	diagnoseOffset int
 }
 
 func newModel(v *profilevault.Vault, vaultPath string) *model {
-	return &model{vault: v, vaultPath: vaultPath, screen: screenServerList}
+	return &model{vault: v, vaultPath: vaultPath, screen: screenServerList, width: 100, height: 30}
 }
 
 func (m *model) Init() tea.Cmd { return nil }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Ctrl+C is an application-level escape hatch. Handle it before any
+	// screen or huh form sees the key; huh normally treats Ctrl+C as a
+	// local form abort, which made quitting depend on the active screen.
+	if key, ok := msg.(tea.KeyMsg); ok {
+		if key.String() == "ctrl+c" || key.String() == "f10" {
+			m.closeSessions()
+			return m, tea.Quit
+		}
+		if terminalTooSmall(m.width, m.height) {
+			// Keep the underlying screen stable while the terminal is unusably
+			// small. Non-key messages (including completed network operations)
+			// still flow through the state machine below.
+			return m, nil
+		}
+		switch key.String() {
+		case "f1":
+			if m.screen != screenHelp {
+				m.helpReturn = m.screen
+				m.screen = screenHelp
+			}
+			return m, nil
+		case "?":
+			if m.screen == screenServerList || m.screen == screenServerDetail || m.screen == screenPeerActionMenu || m.screen == screenPeerReveal {
+				m.helpReturn = m.screen
+				m.screen = screenHelp
+				return m, nil
+			}
+		}
+	}
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		oldWidth, oldHeight := m.width, m.height
+		oldMode := layoutModeFor(m.width, m.height)
+		m.width, m.height = size.Width, size.Height
+		if m.peersLoaded {
+			m.rebuildPeerTable()
+		}
+		// Terminal emulators do not all erase rows that disappeared after a
+		// resize. A full clear on breakpoint changes prevents stale borders and
+		// duplicated footers without flickering during ordinary updates.
+		if oldMode != layoutModeFor(m.width, m.height) || size.Width < oldWidth || size.Height < oldHeight {
+			return m, tea.ClearScreen
+		}
+		return m, nil
+	}
 	switch msg := msg.(type) {
 	case discoveryMsg:
 		m.loading = false
+		if msg.err != "" {
+			msg.sess.close()
+		} else if msg.sess != nil {
+			m.detailSession.close()
+			m.detailSession = msg.sess
+		}
 		m.report = msg.report
 		m.state = msg.state
 		m.detailErr = msg.err
 		return m, nil
 	case peerListMsg:
 		m.peersLoaded = true
+		m.peersRefreshing = false
 		m.peersErr = msg.err
 		m.peers = msg.peers
 		m.rebuildPeerTable()
@@ -232,6 +299,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateRevokeConfirm(msg)
 	case screenPeerExportForm:
 		return m.updateExportForm(msg)
+	case screenChangePassword:
+		return m.updatePasswordForm(msg)
+	case screenHelp:
+		if isKey && (keyMsg.String() == "esc" || keyMsg.String() == "q" || keyMsg.String() == "enter") {
+			m.screen = m.helpReturn
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -283,10 +357,26 @@ func (m *model) setStatus(msg string) {
 	m.statusErr = false
 }
 
+func (m *model) closeSessions() {
+	m.activeSession.close()
+	m.activeSession = nil
+	m.detailSession.close()
+	m.detailSession = nil
+}
+
+func (m *model) releaseActiveSession() {
+	if !m.activeSessionBorrowed {
+		m.activeSession.close()
+	}
+	m.activeSession = nil
+	m.activeSessionBorrowed = false
+}
+
 func (m *model) updateServerList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	servers := m.vault.Registry.Servers
 	switch msg.String() {
-	case "ctrl+c", "q":
+	case "q":
+		m.closeSessions()
 		return m, tea.Quit
 	case "up", "k":
 		if m.cursor > 0 {
@@ -296,11 +386,11 @@ func (m *model) updateServerList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor < len(servers)-1 {
 			m.cursor++
 		}
-	case "a":
+	case "a", "n", "f2":
 		m.clearStatus()
 		m.startServerForm(false)
 		return m, m.serverForm.Init()
-	case "e":
+	case "e", "f4":
 		if len(servers) == 0 {
 			return m, nil
 		}
@@ -308,13 +398,17 @@ func (m *model) updateServerList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selected = servers[m.cursor]
 		m.startServerForm(true)
 		return m, m.serverForm.Init()
-	case "x":
+	case "x", "d":
 		if len(servers) == 0 {
 			return m, nil
 		}
 		m.clearStatus()
 		m.startRemoveConfirm(servers[m.cursor])
 		return m, m.removeForm.Init()
+	case "p":
+		m.clearStatus()
+		m.startPasswordForm()
+		return m, m.passwordForm.Init()
 	case "enter":
 		if len(servers) == 0 {
 			return m, nil
@@ -335,29 +429,32 @@ func (m *model) updateServerList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "ctrl+c":
-		return m, tea.Quit
 	case "q", "esc":
+		m.detailSession.close()
+		m.detailSession = nil
 		m.screen = screenServerList
 		m.clearStatus()
 		return m, nil
 	case "tab":
 		m.tab = (m.tab + 1) % 3
+		m.diagnoseOffset = 0
 		if m.tab == tabPeers && !m.peersLoaded {
-			return m, m.loadPeersCmd()
+			return m, m.loadPeersFromSessionCmd()
 		}
 		if m.tab == tabDiagnose && !m.checksLoaded {
-			return m, m.loadDiagnoseCmd()
+			m.checks = diagnostics.BuildChecks(m.report, m.vault.ListPeers(m.selected.ID), time.Now())
+			m.checksLoaded = true
 		}
 		return m, nil
-	case "r":
+	case "r", "f5":
 		switch m.tab {
 		case tabPeers:
-			m.peersLoaded = false
-			return m, m.loadPeersCmd()
+			return m, m.loadPeersFromSessionCmd()
 		case tabDiagnose:
-			m.checksLoaded = false
-			return m, m.loadDiagnoseCmd()
+			m.checks = diagnostics.BuildChecks(m.report, m.vault.ListPeers(m.selected.ID), time.Now())
+			m.checksLoaded = true
+			m.diagnoseOffset = 0
+			return m, nil
 		default:
 			if m.loading {
 				return m, nil
@@ -374,15 +471,33 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.tab == tabOverview && !m.loading {
 			return m, m.startConfigurePrep()
 		}
-	case "a":
+	case "a", "n", "f2":
 		if m.tab == tabPeers {
 			m.startPeerForm()
 			return m, m.peerForm.Init()
 		}
-	case "enter":
+	case "enter", "f8":
 		if m.tab == tabPeers {
 			return m.openActionMenu()
 		}
+	}
+	if m.tab == tabDiagnose {
+		switch msg.String() {
+		case "up", "k":
+			if m.diagnoseOffset > 0 {
+				m.diagnoseOffset--
+			}
+		case "down", "j":
+			if m.diagnoseOffset < max(0, len(m.diagnoseLines())-m.diagnoseVisibleRows()) {
+				m.diagnoseOffset++
+			}
+		}
+		return m, nil
+	}
+	if m.tab == tabPeers {
+		var cmd tea.Cmd
+		m.peerTable, cmd = m.peerTable.Update(msg)
+		return m, cmd
 	}
 	return m, nil
 }
@@ -402,9 +517,8 @@ func (m *model) connectAndDiscoverCmd(s domain.Server) tea.Cmd {
 		if err != nil {
 			return discoveryMsg{err: fmt.Sprintf("connect: %v", err)}
 		}
-		defer sess.close()
 
 		report := discovery.Discover(ctx, sess.client, prompts)
-		return discoveryMsg{report: report, state: discovery.Classify(report)}
+		return discoveryMsg{report: report, state: discovery.Classify(report), sess: sess}
 	})
 }

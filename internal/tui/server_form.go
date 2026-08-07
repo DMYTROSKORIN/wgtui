@@ -149,7 +149,7 @@ func (m *model) viewServerForm() string {
 	if m.serverEdit {
 		title = "Edit " + m.selected.DisplayName
 	}
-	return titleStyle.Render("wgtui") + "  " + subtitleStyle.Render(title) + "\n\n" + m.serverForm.View()
+	return formScreen(m, title, m.serverForm.View(), "Esc Cancel", "Ctrl+C Quit")
 }
 
 func (m *model) startRemoveConfirm(s domain.Server) {
@@ -195,5 +195,5 @@ func (m *model) updateRemoveConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) viewRemoveConfirm() string {
-	return titleStyle.Render("wgtui") + "\n\n" + m.removeForm.View()
+	return formScreen(m, "Remove server", m.removeForm.View(), "Esc Cancel", "Ctrl+C Quit")
 }

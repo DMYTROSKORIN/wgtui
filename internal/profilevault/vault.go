@@ -207,3 +207,31 @@ func (v *Vault) Save(path string) error {
 	}
 	return atomicWriteFile(path, out, 0o600)
 }
+
+// ChangePassword verifies the current password against the vault on disk,
+// then re-encrypts the in-memory registry with a fresh salt and the new
+// password. Save is atomic; on any failure this Vault is restored to its
+// previous key material and the existing file remains usable.
+func (v *Vault) ChangePassword(path, currentPassword, newPassword string) error {
+	if len(newPassword) < 8 {
+		return errors.New("profilevault: new master password must be at least 8 characters")
+	}
+	if _, err := Open(path, currentPassword); err != nil {
+		if errors.Is(err, ErrWrongPassword) {
+			return ErrWrongPassword
+		}
+		return fmt.Errorf("verify current password: %w", err)
+	}
+
+	newSalt := make([]byte, saltLen)
+	if _, err := rand.Read(newSalt); err != nil {
+		return fmt.Errorf("generate new salt: %w", err)
+	}
+	oldMaster, oldSalt := v.master, v.salt
+	v.master, v.salt = newPassword, newSalt
+	if err := v.Save(path); err != nil {
+		v.master, v.salt = oldMaster, oldSalt
+		return fmt.Errorf("save re-encrypted vault: %w", err)
+	}
+	return nil
+}

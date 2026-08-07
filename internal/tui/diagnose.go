@@ -1,41 +1,12 @@
 package tui
 
 import (
-	"context"
 	"fmt"
-	"os"
 	"strings"
-	"time"
-
-	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/diagnostics"
-	"github.com/DMYTROSKORIN/wgtui/internal/discovery"
+	"github.com/charmbracelet/x/ansi"
 )
-
-// loadDiagnoseCmd reuses the exact same checklist internal/cli's `diagnose`
-// command does (internal/diagnostics.BuildChecks), just rendered as a
-// colored list instead of plain text.
-func (m *model) loadDiagnoseCmd() tea.Cmd {
-	s := m.selected
-	localPeers := m.vault.ListPeers(s.ID)
-
-	return m.releaseTerminalAndRun(func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		target := connectingBanner(os.Stdout, s)
-		prompts := newTerminalPrompts(os.Stdout, target)
-		sess, err := dial(ctx, s, prompts)
-		if err != nil {
-			return diagnoseMsg{err: fmt.Sprintf("connect: %v", err)}
-		}
-		defer sess.close()
-
-		report := discovery.Discover(ctx, sess.client, prompts)
-		checks := diagnostics.BuildChecks(report, localPeers, time.Now())
-		return diagnoseMsg{checks: checks}
-	})
-}
 
 func (m *model) viewDiagnoseTab() string {
 	switch {
@@ -44,20 +15,43 @@ func (m *model) viewDiagnoseTab() string {
 	case m.checksErr != "":
 		return dangerStyle.Render("Error: "+m.checksErr) + "\n"
 	default:
+		lines := m.diagnoseLines()
+		visible := m.diagnoseVisibleRows()
+		maxOffset := max(0, len(lines)-visible)
+		m.diagnoseOffset = clamp(m.diagnoseOffset, 0, maxOffset)
+		end := min(len(lines), m.diagnoseOffset+visible)
 		var b strings.Builder
-		for _, c := range m.checks {
-			b.WriteString(checkStatusBadge(string(c.Status)) + "  " + textStyle.Render(c.Name))
-			if c.Detail != "" {
-				b.WriteString("\n     " + dimStyle.Render(c.Detail))
-			}
-			b.WriteString("\n")
+		for _, line := range lines[m.diagnoseOffset:end] {
+			b.WriteString(line + "\n")
 		}
-		if len(diagnostics.Limitations) > 0 {
-			b.WriteString("\n" + dimStyle.Render("Limitations:") + "\n")
-			for _, l := range diagnostics.Limitations {
-				b.WriteString(dimStyle.Render("  - "+l) + "\n")
-			}
+		if len(lines) > visible {
+			b.WriteString(dimStyle.Render(fmt.Sprintf("Rows %d–%d of %d · ↑/↓ scroll", m.diagnoseOffset+1, end, len(lines))))
 		}
 		return b.String()
 	}
+}
+
+func (m *model) diagnoseVisibleRows() int {
+	// Two inner-panel lines are occupied by the tabs and their spacer; one
+	// more is reserved for the scroll indicator when it is needed.
+	return max(2, m.dashboardPanelHeight()-4)
+}
+
+func (m *model) diagnoseLines() []string {
+	width := max(20, m.width-8)
+	lines := make([]string, 0, len(m.checks)+len(diagnostics.Limitations)+1)
+	for _, c := range m.checks {
+		line := checkStatusBadge(string(c.Status)) + "  " + textStyle.Render(c.Name)
+		if c.Detail != "" {
+			line += dimStyle.Render(" — " + c.Detail)
+		}
+		lines = append(lines, ansi.Truncate(line, width, "…"))
+	}
+	if len(diagnostics.Limitations) > 0 {
+		lines = append(lines, dimStyle.Render("Limitations:"))
+		for _, limitation := range diagnostics.Limitations {
+			lines = append(lines, ansi.Truncate(dimStyle.Render("• "+limitation), width, "…"))
+		}
+	}
+	return lines
 }

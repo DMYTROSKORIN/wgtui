@@ -1,4 +1,4 @@
-// Package transaction implements the locked backup-write-validate-apply-
+// Package transaction implements the locked recover-write-validate-apply-
 // verify-rollback sequence (SPEC.md §15.2) used by every mutating
 // peer/interface operation. See script.go's buildScript doc comment for
 // the step-by-step mapping to the spec.
@@ -19,7 +19,7 @@ type Outcome struct {
 	RolledBack bool
 	// Reason is set for any non-Applied outcome: "lock_failed",
 	// "fingerprint_mismatch", "validate_failed", or
-	// "apply_failed_rolled_back".
+	// "apply_failed_rolled_back", or "recovery_required".
 	Reason string
 	// RawOutput is the full remote stdout+stderr, useful for
 	// troubleshooting a failure. It never contains a private key: the
@@ -59,18 +59,26 @@ func parseOutcome(out string, exitCode int, plan Plan) (Outcome, error) {
 	case strings.Contains(out, "WGTUI_VALIDATE_FAILED"):
 		return Outcome{Reason: "validate_failed", RawOutput: out},
 			fmt.Errorf("new config failed wg-quick validation, nothing was changed:\n%s", out)
+	case strings.Contains(out, "WGTUI_RECOVERY_REQUIRED"):
+		backup := markerValue(out, "WGTUI_RECOVERY_REQUIRED")
+		return Outcome{Reason: "recovery_required", BackupPath: backup, RawOutput: out},
+			fmt.Errorf("applying and automatically restoring the server config both failed; recovery copy retained on the remote server at %s:\n%s", backup, out)
 	case strings.Contains(out, "WGTUI_APPLY_FAILED_ROLLED_BACK"):
 		return Outcome{Reason: "apply_failed_rolled_back", RolledBack: true, RawOutput: out},
-			fmt.Errorf("applying the new config failed; the backup was restored:\n%s", out)
+			fmt.Errorf("applying the new config failed; the temporary recovery copy was restored and removed:\n%s", out)
 	}
 
 	idx := strings.Index(out, "WGTUI_OK")
 	if idx == -1 || exitCode != 0 {
 		return Outcome{RawOutput: out}, fmt.Errorf("transaction script did not report success (exit %d):\n%s", exitCode, out)
 	}
-	backup := strings.TrimSpace(strings.TrimPrefix(out[idx:], "WGTUI_OK"))
-	if fields := strings.Fields(backup); len(fields) > 0 {
-		backup = fields[0]
+	return Outcome{Applied: true, RawOutput: out}, nil
+}
+
+func markerValue(out, marker string) string {
+	value := strings.TrimSpace(strings.TrimPrefix(out[strings.Index(out, marker):], marker))
+	if fields := strings.Fields(value); len(fields) > 0 {
+		return fields[0]
 	}
-	return Outcome{Applied: true, BackupPath: backup, RawOutput: out}, nil
+	return "(unknown path)"
 }

@@ -19,7 +19,8 @@ func TestParseOutcome(t *testing.T) {
 		{"fingerprint mismatch", "WGTUI_FINGERPRINT_MISMATCH\n", 1, false, "fingerprint_mismatch", true},
 		{"validate failed", "WGTUI_VALIDATE_FAILED\nsome wg-quick error\n", 1, false, "validate_failed", true},
 		{"apply failed rolled back", "WGTUI_APPLY_FAILED_ROLLED_BACK\nsyncconf error\n", 1, false, "apply_failed_rolled_back", true},
-		{"success", "WGTUI_OK /etc/wireguard/wg0.conf.bak.20260101120000\n", 0, true, "", false},
+		{"recovery required", "WGTUI_RECOVERY_REQUIRED /etc/wireguard/wg0.conf.bak.20260101120000\n", 1, false, "recovery_required", true},
+		{"success", "WGTUI_OK\n", 0, true, "", false},
 		{"unexpected output", "something went sideways\n", 1, false, "", true},
 		{"exit nonzero without marker", "", 1, false, "", true},
 	}
@@ -39,10 +40,10 @@ func TestParseOutcome(t *testing.T) {
 	}
 }
 
-func TestParseOutcome_ExtractsBackupPath(t *testing.T) {
-	outcome, err := parseOutcome("WGTUI_OK /etc/wireguard/wg0.conf.bak.20260101120000\n", 0, validPlan())
-	if err != nil {
-		t.Fatalf("parseOutcome: %v", err)
+func TestParseOutcome_ExtractsRecoveryPathOnlyWhenNeeded(t *testing.T) {
+	outcome, err := parseOutcome("WGTUI_RECOVERY_REQUIRED /etc/wireguard/wg0.conf.bak.20260101120000\n", 1, validPlan())
+	if err == nil {
+		t.Fatal("expected recovery-required error")
 	}
 	want := "/etc/wireguard/wg0.conf.bak.20260101120000"
 	if outcome.BackupPath != want {

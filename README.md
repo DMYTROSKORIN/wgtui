@@ -3,9 +3,10 @@
 Terminal UI and CLI for managing one or more remote WireGuard servers over plain SSH —
 no agent, no web UI, no extra open port on the server.
 
-> **Status: early development.** Only the project skeleton exists so far. See
-> [`docs/SPEC.md`](docs/SPEC.md) for the full specification and
-> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how it's being built.
+> **Status: stable personal release.** The TUI, CLI, MCP front end, encrypted local
+> vault, discovery, setup and peer lifecycle are implemented. See
+> [`docs/SPEC.md`](docs/SPEC.md) for requirements, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+> for internals and [`docs/TUI.md`](docs/TUI.md) for the terminal workflow.
 
 ---
 
@@ -16,8 +17,10 @@ no agent, no web UI, no extra open port on the server.
 - Shows interface/peer state, handshake, endpoint, and traffic counters.
 - Generates client keypairs **locally** and hands the server only the public key — a
   ready `.conf` and QR code are produced on your machine, no `scp` involved.
-- Adds, pauses, resumes, rotates, and revokes peers, each as a backed-up,
-  verified, rollback-on-failure transaction.
+- Gives new client profiles an editable Google DNS default (`8.8.8.8`, `8.8.4.4`),
+  so full-tunnel clients do not silently depend on their previous network resolver.
+- Adds, pauses, resumes, rotates, and revokes peers, each as a locked,
+  verified, rollback-on-failure transaction with an ephemeral recovery copy.
 - Offers a guided first-time server setup when no WireGuard interface exists yet.
 - Leaves nothing but standard WireGuard, standard config files, and SSH on the server.
 
@@ -48,9 +51,13 @@ this project — it is never a managed server.
 
 - Server private key never leaves the server; client private keys never touch the server.
 - Strict SSH host-key verification by default, always.
-- Every mutating operation is a locked backup → apply → verify → rollback-on-failure
-  transaction.
+- Every mutating operation uses a locked temporary recovery copy, verifies the
+  result, and rolls back on failure. The copy is retained only if recovery itself fails.
 - No secret is ever passed as a process argument, logged, or included in `--json` output.
+- App-owned local state lives in `~/.wgtui-config/vault.json`, encrypted under the
+  master password. An explicit TUI export creates a `0700` bundle in the invoking
+  user's home with a profile and QR PNG, both mode `0600`.
+- `wgtui` refuses to run as root so local keys cannot silently move into root's home.
 
 Full analysis: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 
@@ -63,6 +70,15 @@ Full analysis: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 ```bash
 go build ./...
 ```
+
+Running `wgtui` without arguments opens the full-screen dashboard. The master
+password is requested once before the dashboard starts. Inside the app, `?`
+shows keyboard help, `r` refreshes network state, `Esc` goes back, and
+`Ctrl+C` exits safely from every screen. Function keys are optional aliases,
+never required. The minimum interactive terminal size is `64×18`; `90×24` or
+larger is recommended. The interface switches between compact, standard and
+wide layouts automatically and preserves the current screen while the terminal
+is temporarily too small.
 
 <details>
 <summary>Installing a release</summary>

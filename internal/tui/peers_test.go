@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"testing"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/domain"
@@ -32,7 +33,7 @@ func TestPeerFormKey_SwitchesScreen(t *testing.T) {
 func TestResolvePeerInterface_PrefersMetadata(t *testing.T) {
 	// metaInterface set - must return immediately without touching sess
 	// (which is nil here; a network fallback would nil-panic).
-	got, err := resolvePeerInterface(nil, nil, "wg1", "wg0")
+	got, err := resolvePeerInterface(context.TODO(), nil, "wg1", "wg0")
 	if err != nil {
 		t.Fatalf("resolvePeerInterface: %v", err)
 	}

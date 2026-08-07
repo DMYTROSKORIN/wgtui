@@ -14,7 +14,6 @@ import (
 	"github.com/DMYTROSKORIN/wgtui/internal/peerops"
 	"github.com/DMYTROSKORIN/wgtui/internal/profilevault"
 	"github.com/DMYTROSKORIN/wgtui/internal/sshtransport"
-	"github.com/DMYTROSKORIN/wgtui/internal/transaction"
 )
 
 // resolvePeerInterface prefers the interface recorded in a peer's own
@@ -62,7 +61,7 @@ type peerAddSummary struct {
 	Name       string `json:"name"`
 	PublicKey  string `json:"public_key"`
 	VPNAddress string `json:"vpn_address"`
-	BackupPath string `json:"backup_path"`
+	BackupPath string `json:"backup_path,omitempty"`
 }
 
 func tunnelModeLabel(full bool) string {
@@ -105,7 +104,7 @@ func runPeerAdd(args []string, stdout, stderr io.Writer) int {
 	fullTunnel := fs.Bool("full-tunnel", true, "client routes all traffic through the tunnel")
 	splitTunnel := fs.String("split-tunnel", "", "comma-separated CIDRs to route through the tunnel instead of full-tunnel")
 	keepalive := fs.Int("keepalive", 25, "PersistentKeepalive seconds (0 to omit)")
-	dns := fs.String("dns", "", "comma-separated DNS servers for the client profile")
+	dns := fs.String("dns", peerops.DefaultDNSCSV, "comma-separated DNS servers for the client profile")
 	endpointHost := fs.String("endpoint-host", "", "VPN endpoint hostname/IP, if different from the SSH host")
 	noPSK := fs.Bool("no-psk", false, "do not generate a preshared key (on by default, SPEC.md §30.8)")
 	output := fs.String("output", "", "also write the client .conf to this path")
@@ -243,7 +242,7 @@ func runPeerAdd(args []string, stdout, stderr io.Writer) int {
 		// success falsely - print it now so the user has one more chance
 		// to save it, and be explicit that the server already has this
 		// peer (so they know to revoke it if they can't recover).
-		fmt.Fprintf(stderr, "wgtui peer add: peer was created on the server (backup: %s), but saving the local vault failed: %v\n", result.Outcome.BackupPath, err)
+		fmt.Fprintf(stderr, "wgtui peer add: peer was created on the server, but saving the local vault failed: %v\n", err)
 		fmt.Fprintln(stderr, "To avoid losing this profile, here it is now - save it somewhere safe, or revoke the peer if you can't:")
 		fmt.Fprintln(stderr, "----- BEGIN CLIENT PROFILE (SECRET) -----")
 		fmt.Fprintln(stderr, clientConf)
@@ -274,7 +273,7 @@ func runPeerAdd(args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
-	fmt.Fprintf(stdout, "Added peer %q (%s), VPN address %s. Backup: %s\n", *name, shortenKey(result.KeyPair.PublicKey), addr, result.Outcome.BackupPath)
+	fmt.Fprintf(stdout, "Added peer %q (%s), VPN address %s. Local profile saved in the encrypted vault.\n", *name, shortenKey(result.KeyPair.PublicKey), addr)
 	fmt.Fprintln(stdout, "A fresh handshake from the client is the only real proof it works (SPEC.md §19) - this command does not wait for one.")
 	return 0
 }
@@ -330,7 +329,7 @@ func runPeerDisable(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	outcome, rawBlock, err := peerops.DisablePeer(ctx, client, prompts, cc, meta.PublicKey)
+	_, rawBlock, err := peerops.DisablePeer(ctx, client, prompts, cc, meta.PublicKey)
 	if err != nil {
 		fmt.Fprintf(stderr, "wgtui peer disable: %v\n", err)
 		return 1
@@ -341,11 +340,11 @@ func runPeerDisable(args []string, stdout, stderr io.Writer) int {
 	meta.Interface = resolvedIface
 	v.UpdatePeer(meta)
 	if err := v.Save(vaultPath); err != nil {
-		fmt.Fprintf(stderr, "wgtui peer disable: applied on the server (backup: %s) but failed to save local metadata: %v\n", outcome.BackupPath, err)
+		fmt.Fprintf(stderr, "wgtui peer disable: access was paused on the server but local metadata could not be saved: %v\n", err)
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "Disabled peer %q. Backup: %s\n", name, outcome.BackupPath)
+	fmt.Fprintf(stdout, "Paused peer %q. Server access removed; local profile kept.\n", name)
 	return 0
 }
 
@@ -400,7 +399,7 @@ func runPeerEnable(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	outcome, err := peerops.EnablePeer(ctx, client, prompts, cc, meta.DisabledBlockRaw)
+	_, err = peerops.EnablePeer(ctx, client, prompts, cc, meta.DisabledBlockRaw)
 	if err != nil {
 		fmt.Fprintf(stderr, "wgtui peer enable: %v\n", err)
 		return 1
@@ -411,11 +410,11 @@ func runPeerEnable(args []string, stdout, stderr io.Writer) int {
 	meta.Interface = resolvedIface
 	v.UpdatePeer(meta)
 	if err := v.Save(vaultPath); err != nil {
-		fmt.Fprintf(stderr, "wgtui peer enable: applied on the server (backup: %s) but failed to save local metadata: %v\n", outcome.BackupPath, err)
+		fmt.Fprintf(stderr, "wgtui peer enable: access was resumed on the server but local metadata could not be saved: %v\n", err)
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "Resumed peer %q. Backup: %s\n", name, outcome.BackupPath)
+	fmt.Fprintf(stdout, "Resumed peer %q. Server access restored.\n", name)
 	return 0
 }
 
@@ -461,7 +460,6 @@ func runPeerRevoke(args []string, stdout, stderr io.Writer) int {
 	}
 	defer cleanup()
 
-	var outcome transaction.Outcome
 	if meta.Status != profilevault.PeerStatusDisabled {
 		resolvedIface, err := resolvePeerInterface(ctx, client, meta.Interface, ifaceFlag)
 		if err != nil {
@@ -473,7 +471,7 @@ func runPeerRevoke(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "wgtui peer revoke: %v\n", err)
 			return 1
 		}
-		outcome, err = peerops.RevokePeer(ctx, client, prompts, cc, meta.PublicKey)
+		_, err = peerops.RevokePeer(ctx, client, prompts, cc, meta.PublicKey)
 		if err != nil {
 			fmt.Fprintf(stderr, "wgtui peer revoke: %v\n", err)
 			return 1
@@ -498,7 +496,7 @@ func runPeerRevoke(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "Revoked peer %q. profile_deleted=%v metadata_deleted=%v. Backup: %s\n", name, deleteProfile, deleteMetadata, outcome.BackupPath)
+	fmt.Fprintf(stdout, "Revoked peer %q. profile_deleted=%v metadata_deleted=%v.\n", name, deleteProfile, deleteMetadata)
 	return 0
 }
 
@@ -598,13 +596,13 @@ func runPeerRotate(args []string, stdout, stderr io.Writer) int {
 	_ = v.AddPeer(meta)
 
 	if err := v.Save(vaultPath); err != nil {
-		fmt.Fprintf(stderr, "wgtui peer rotate: applied on the server (backup: %s), but saving the local vault failed: %v\n", result.Outcome.BackupPath, err)
+		fmt.Fprintf(stderr, "wgtui peer rotate: keys were rotated on the server, but saving the local vault failed: %v\n", err)
 		fmt.Fprintln(stderr, "New client profile (SECRET) - save it manually:")
 		fmt.Fprintln(stderr, newConf)
 		return 1
 	}
 
-	fmt.Fprintf(stdout, "Rotated peer %q: %s -> %s. Backup: %s\n", name, shortenKey(oldBlock.PublicKey()), shortenKey(result.KeyPair.PublicKey), result.Outcome.BackupPath)
+	fmt.Fprintf(stdout, "Rotated peer %q: %s -> %s. New local profile saved.\n", name, shortenKey(oldBlock.PublicKey()), shortenKey(result.KeyPair.PublicKey))
 	return 0
 }
 

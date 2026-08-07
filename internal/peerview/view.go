@@ -24,6 +24,8 @@ type Peer struct {
 	Interface              string `json:"interface,omitempty"`
 	VPNIP                  string `json:"vpn_ip,omitempty"`
 	PublicKey              string `json:"public_key"`
+	Endpoint               string `json:"endpoint,omitempty"`
+	PresharedKeyPresent    bool   `json:"preshared_key_present"`
 	State                  string `json:"state"`
 	LatestHandshakeSeconds *int64 `json:"latest_handshake_seconds,omitempty"`
 	RxBytes                int64  `json:"rx_bytes"`
@@ -59,14 +61,16 @@ func Reconcile(dumpPeers []wgconfig.RuntimePeer, localPeers []profilevault.PeerM
 		}
 
 		pv := Peer{
-			Name:             name,
-			Interface:        p.Interface,
-			PublicKey:        p.PublicKey,
-			State:            string(status),
-			RxBytes:          p.ReceiveBytes,
-			TxBytes:          p.TransmitBytes,
-			ProfileAvailable: hasProfile(p.PublicKey),
-			Managed:          managed,
+			Name:                name,
+			Interface:           p.Interface,
+			PublicKey:           p.PublicKey,
+			Endpoint:            p.Endpoint,
+			PresharedKeyPresent: p.PresharedKeyPresent,
+			State:               string(status),
+			RxBytes:             p.ReceiveBytes,
+			TxBytes:             p.TransmitBytes,
+			ProfileAvailable:    hasProfile(p.PublicKey),
+			Managed:             managed,
 		}
 		if len(p.AllowedIPs) > 0 {
 			pv.VPNIP = p.AllowedIPs[0]

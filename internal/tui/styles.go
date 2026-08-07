@@ -1,74 +1,71 @@
 package tui
 
 import (
+	"strings"
+
 	bkey "github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Colors are plain ANSI 4-bit indices (0-15), not fixed hex values: the
-// terminal emulator itself remaps these to whatever palette the user has
-// configured (Dracula, Nord, Gruvbox, ...), so wgtui's colors always match
-// the rest of their terminal instead of clashing with it.
-//
-// Secondary/dim text is deliberately NOT one of these indices (there's no
-// colorMuted): ANSI 8 ("bright black") is notoriously unreliable across
-// terminal configs - on some it's tuned close enough to the background
-// that secondary text becomes nearly illegible (reported: "очень бледные
-// цвета", every not-yet-focused field washed out). Faint(true) dims
-// whatever the terminal's actual foreground already is via the SGR faint
-// attribute instead of trusting a specific untuned palette slot - the
-// same "respects your terminal" spirit, just not dependent on one color
-// index rendering with reasonable contrast.
-const (
-	colorDanger    = "9" // bright red - fail, revoke, destructive confirms
-	colorSuccess   = "2" // green - active, pass, installed
-	colorWarning   = "3" // yellow - disabled, warn, drift
-	colorAccent    = "6" // cyan - titles, section headers
-	colorHighlight = "5" // magenta - selection, focus (matches huh's button bg)
-	colorText      = "7" // white - primary text
+// Adaptive light/dark colors keep semantic states consistent while preserving
+// contrast across terminal themes. Muted text uses a real foreground color,
+// not SGR faint: faint became unreadable in several common dark palettes.
+var (
+	colorDanger    = lipgloss.AdaptiveColor{Light: "#B91C1C", Dark: "#FF5F6D"}
+	colorSuccess   = lipgloss.AdaptiveColor{Light: "#15803D", Dark: "#4ADE80"}
+	colorWarning   = lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FBBF24"}
+	colorAccent    = lipgloss.AdaptiveColor{Light: "#0369A1", Dark: "#38BDF8"}
+	colorHighlight = lipgloss.AdaptiveColor{Light: "#6D28D9", Dark: "#C084FC"}
+	colorSelection = lipgloss.AdaptiveColor{Light: "#EDE9FE", Dark: "#312E81"}
+	colorText      = lipgloss.AdaptiveColor{Light: "#111827", Dark: "#E5E7EB"}
+	colorMuted     = lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}
 )
 
 var (
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorAccent))
-	subtitleStyle = lipgloss.NewStyle().Faint(true)
-	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorHighlight))
-	dimStyle      = lipgloss.NewStyle().Faint(true)
-	textStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color(colorText))
-	successStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color(colorSuccess))
-	warningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarning))
-	dangerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorDanger))
+	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	subtitleStyle = lipgloss.NewStyle().Foreground(colorMuted)
+	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(colorHighlight)
+	dimStyle      = lipgloss.NewStyle().Foreground(colorMuted)
+	textStyle     = lipgloss.NewStyle().Foreground(colorText)
+	successStyle  = lipgloss.NewStyle().Foreground(colorSuccess)
+	warningStyle  = lipgloss.NewStyle().Foreground(colorWarning)
+	dangerStyle   = lipgloss.NewStyle().Bold(true).Foreground(colorDanger)
+
+	accentHeadingStyle  = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	menuSelectedStyle   = lipgloss.NewStyle().Bold(true).Foreground(colorText).Background(colorSelection).Padding(0, 1)
+	dangerSelectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(colorDanger).Padding(0, 1)
 
 	panelStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorAccent).
 			Padding(0, 1)
 
-	tabActiveStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorAccent)).Underline(true)
-	tabInactiveStyle = lipgloss.NewStyle().Faint(true)
+	tabActiveStyle   = lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Underline(true)
+	tabInactiveStyle = lipgloss.NewStyle().Foreground(colorMuted)
 
-	footerStyle = lipgloss.NewStyle().Faint(true)
+	footerStyle = lipgloss.NewStyle().Foreground(colorMuted)
+	keyStyle    = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
 )
 
 // formTheme is the one huh.Theme every form/confirm/select in the app
 // uses, so a huh screen and a hand-rolled screen never look like two
-// different programs stitched together. Built on ThemeBase16 (so focused
-// titles/selectors/errors keep its terminal-adaptive coloring), but every
-// place it uses ANSI 8 for secondary text is swapped for Faint(true) -
-// see the package-level color doc comment for why.
+// different programs stitched together.
 func formTheme() *huh.Theme {
 	t := huh.ThemeBase16()
 
-	faint := lipgloss.NewStyle().Faint(true)
+	muted := lipgloss.NewStyle().Foreground(colorMuted)
 
-	t.Focused.Base = t.Focused.Base.BorderForeground(lipgloss.Color(colorAccent))
-	t.Focused.Description = faint
-	t.Focused.TextInput.Placeholder = faint
+	t.Focused.Base = t.Focused.Base.BorderForeground(colorAccent)
+	t.Focused.Title = t.Focused.Title.Bold(true).Foreground(colorAccent)
+	t.Focused.Description = muted
+	t.Focused.TextInput.Placeholder = muted
 
-	t.Blurred.Title = faint
-	t.Blurred.NoteTitle = faint
-	t.Blurred.Description = faint
-	t.Blurred.TextInput.Prompt = faint
-	t.Blurred.TextInput.Placeholder = faint
+	t.Blurred.Title = muted
+	t.Blurred.NoteTitle = muted
+	t.Blurred.Description = muted
+	t.Blurred.TextInput.Prompt = muted
+	t.Blurred.TextInput.Placeholder = muted
 
 	return t
 }
@@ -89,7 +86,7 @@ func formKeyMap() *huh.KeyMap {
 // state always reads the same way everywhere (peer list, diagnose
 // checklist, server connection state).
 func badge(style lipgloss.Style, symbol, label string) string {
-	return style.Render(symbol+" ") + label
+	return style.Render(symbol + " " + label)
 }
 
 // peerStateBadge covers peerview.Peer.State's actual values (mirrors
@@ -103,7 +100,11 @@ func peerStateBadge(state string) string {
 		return badge(warningStyle, "●", state)
 	case "drifted", "error":
 		return badge(dangerStyle, "●", state)
-	case "idle", "never_connected", "unmanaged":
+	case "never_connected":
+		return badge(dimStyle, "○", "never")
+	case "unmanaged":
+		return badge(warningStyle, "○", state)
+	case "idle":
 		return badge(dimStyle, "○", state)
 	default:
 		return badge(dimStyle, "○", state)
@@ -122,4 +123,28 @@ func checkStatusBadge(status string) string {
 	default:
 		return badge(dimStyle, "-", "skip")
 	}
+}
+
+// serverStateBadge gives discovery's high-level state the same visual
+// vocabulary as peer and diagnostic state without coupling styles.go to the
+// discovery package.
+func serverStateBadge(state string) string {
+	label := strings.ReplaceAll(state, "_", " ")
+	switch state {
+	case "active_consistent":
+		return badge(successStyle, "●", label)
+	case "wireguard_missing", "tools_no_interfaces", "config_exists_stopped":
+		return badge(warningStyle, "●", label)
+	case "drift", "ambiguous", "insufficient_privileges":
+		return badge(dangerStyle, "●", label)
+	default:
+		return badge(dimStyle, "○", orDefault(label, "unknown"))
+	}
+}
+
+func boolStatus(value bool, yes, no string) string {
+	if value {
+		return successStyle.Render("✓ " + yes)
+	}
+	return warningStyle.Render("○ " + no)
 }

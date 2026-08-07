@@ -100,6 +100,25 @@ func TestHandleActionDone_DefaultsBackToOnCancelled(t *testing.T) {
 	}
 }
 
+func TestBorrowedDashboardSessionSurvivesCancelledAction(t *testing.T) {
+	m := testModel(t)
+	closed := false
+	sess := &session{cleanup: func() { closed = true }}
+	m.handlePlanReady(planReadyMsg{
+		sess: sess, borrowed: true, title: "Test", cancelScreen: screenServerDetail,
+		apply: func(*model) tea.Cmd { return nil },
+	})
+	m.confirmYes = false
+	m.confirmForm.State = huh.StateCompleted
+	m.updateConfirm(nil)
+	if closed || sess.closed {
+		t.Fatal("cancelling an action closed the borrowed dashboard session")
+	}
+	if m.activeSession != nil {
+		t.Fatal("borrowed action session was not released from active state")
+	}
+}
+
 type testError string
 
 func (e testError) Error() string { return string(e) }

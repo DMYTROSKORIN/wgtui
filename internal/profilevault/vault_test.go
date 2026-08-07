@@ -95,6 +95,44 @@ func TestVault_PlaintextNeverOnDisk(t *testing.T) {
 	}
 }
 
+func TestVault_ChangePasswordReencryptsAndPreservesData(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "vault.json")
+	v, _ := New("old-password")
+	_ = v.AddServer(domain.Server{ID: "office"})
+	if err := v.Save(path); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := v.ChangePassword(path, "old-password", "new-password"); err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+	if _, err := Open(path, "old-password"); err != ErrWrongPassword {
+		t.Fatalf("old password error = %v, want ErrWrongPassword", err)
+	}
+	opened, err := Open(path, "new-password")
+	if err != nil {
+		t.Fatalf("open with new password: %v", err)
+	}
+	if _, ok := opened.GetServer("office"); !ok {
+		t.Fatal("server data was lost during password change")
+	}
+}
+
+func TestVault_ChangePasswordRejectsWrongCurrentPassword(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.json")
+	v, _ := New("old-password")
+	if err := v.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.ChangePassword(path, "wrong-password", "new-password"); err != ErrWrongPassword {
+		t.Fatalf("ChangePassword error = %v, want ErrWrongPassword", err)
+	}
+	if _, err := Open(path, "old-password"); err != nil {
+		t.Fatalf("original vault was damaged: %v", err)
+	}
+}
+
 func TestVault_AddServer_DuplicateID(t *testing.T) {
 	v, _ := New("pw")
 	if err := v.AddServer(domain.Server{ID: "a"}); err != nil {

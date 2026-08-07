@@ -149,8 +149,8 @@ unknown directives (spec §15.5), plus:
 
 ### transaction
 
-The backup → lock → apply → verify → rollback engine (spec §15.2) used by every mutating
-peer/interface operation (add/disable/resume/delete/rotate). Implemented as a single
+The lock → ephemeral recovery copy → apply → verify → rollback engine (spec §15.2)
+is used by every mutating peer/interface operation (add/disable/resume/delete/rotate). Implemented as a single
 remote script per mutation (built by `internal/transaction`, run via
 `sshtransport.Client.RunSudoScript`) rather than several separate SSH round trips: one
 sudo prompt, one atomic pass, and no window between our own separate commands for the
@@ -201,8 +201,11 @@ metadata created before this field existed.
 
 Local encrypted storage for generated client `.conf` profiles and the peer metadata
 registry (spec §7.3, §16.1), under the home directory of the user who ran `wgtui`
-(decision, spec §30.3/§30.5). Encrypted at rest with a master password set on first run
+(currently `~/.wgtui-config/vault.json`; decision, spec §30.3/§30.5). Encrypted at rest with a master password set on first run
 (spec §30.4). Directory `0700`, files `0600`, atomic writes via temp file + rename.
+Legacy XDG/Linux and macOS vault paths are migrated atomically on first access. Client
+profiles remain inside the encrypted vault unless the user explicitly exports one to
+their home directory.
 
 ### discovery
 
@@ -214,6 +217,21 @@ one of the seven discovery states (spec §11.4). Never mutates.
 Both are thin front ends over one shared, structured request/response API (spec §29.4) so
 behavior cannot drift between the two. Command surface for `cli` is spec §21; screens for
 `tui` are spec §20.
+
+The TUI has four explicit layout states: a below-minimum guard (`64×18`), compact,
+standard and wide. Wide mode requires sufficient height as well as width, preventing a
+short-but-wide terminal from selecting an inspector it cannot display. The server sidebar
+is removed after a server is opened; compact mode shows one task at a time, standard mode
+uses a full-width peer table plus selection card, and wide mode uses Peers/Selected peer
+panels. Column priority is derived from actual panel width, every cell is display-width
+truncated, diagnostics have a bounded scroll window, and shrinking/cross-breakpoint resize
+events request a full renderer clear so stale rows cannot survive a layout change.
+Post-create client setup is an explicit choice (QR, private bundle export, secret text, or
+finish), not a footer-only set of undocumented next steps. Semantic state colors always
+retain a text label/symbol and therefore are not required to understand the interface.
+`peerops.DefaultDNS` is the shared client-profile DNS default used by TUI, CLI and MCP.
+Explicit TUI export creates a user-home bundle directory containing the `.conf` and a
+locally rendered QR PNG, with directory `0700` and both secret files `0600`.
 
 **Stage 4: reconciliation.** `peer list` merges the runtime `wg show all dump` result with
 the local metadata registry (`reconcilePeers`, pure/network-free): a peer wgtui knows about
@@ -295,11 +313,11 @@ mutation by itself.
    `discovery`/`wgconfig`.
 3. A **plan** (diff, no secrets) is produced and shown to the user (spec §20.4); nothing
    is sent to the server yet.
-4. On confirmation, `transaction` executes the locked backup/apply/verify sequence via
-   `sshtransport` and `wgconfig`.
+4. On confirmation, `transaction` executes the locked recovery-copy/apply/verify
+   sequence via `sshtransport` and `wgconfig`.
 5. On success, `profilevault` persists the new local `.conf` and metadata.
-6. On any failure at any step, `transaction` restores the backup and reports
-   `recovery required` rather than guessing (spec §24).
+6. On an apply failure, `transaction` restores the temporary recovery copy. It reports
+   `recovery required` only if that automatic restore also fails (spec §24).
 
 ## Platform support (MVP)
 
@@ -309,6 +327,7 @@ mutation by itself.
 
 ## Status
 
-This document describes the target shape. As of this commit only the package skeleton
-(`doc.go` stubs) and `cmd/wgtui` exist. Implementation starts at Stage 0 (see the project
-task board / `docs/SPEC.md` §28).
+The architecture above is implemented. The application is in private preview:
+all three front ends and the shared mutation, discovery, encrypted-vault and
+platform-adapter layers exist. Remaining work is driven by real-server
+compatibility testing and user feedback rather than package scaffolding.

@@ -2,10 +2,52 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/DMYTROSKORIN/wgtui/internal/discovery"
 )
 
+const (
+	minimumTerminalWidth  = 64
+	minimumTerminalHeight = 18
+	recommendedWidth      = 90
+	recommendedHeight     = 24
+)
+
+type layoutMode uint8
+
+const (
+	layoutTooSmall layoutMode = iota
+	layoutCompact
+	layoutStandard
+	layoutWide
+)
+
+func layoutModeFor(width, height int) layoutMode {
+	switch {
+	case terminalTooSmall(width, height):
+		return layoutTooSmall
+	case width < recommendedWidth || height < recommendedHeight:
+		return layoutCompact
+	case width < 135:
+		return layoutStandard
+	default:
+		return layoutWide
+	}
+}
+
+func terminalTooSmall(width, height int) bool {
+	return width < minimumTerminalWidth || height < minimumTerminalHeight
+}
+
 func (m *model) View() string {
+	if terminalTooSmall(m.width, m.height) {
+		return m.viewTerminalTooSmall()
+	}
 	var body string
 	switch m.screen {
 	case screenServerForm:
@@ -30,6 +72,10 @@ func (m *model) View() string {
 		body = m.viewRevokeConfirm()
 	case screenPeerExportForm:
 		body = m.viewExportForm()
+	case screenChangePassword:
+		body = m.viewPasswordForm()
+	case screenHelp:
+		body = m.viewHelp()
 	default:
 		body = m.viewServerList()
 	}
@@ -38,50 +84,120 @@ func (m *model) View() string {
 		if m.statusErr {
 			style = dangerStyle
 		}
-		body += "\n\n" + style.Render(m.statusMsg)
+		body += "\n\n" + ansi.Truncate(style.Render(m.statusMsg), max(1, m.width), "…")
 	}
 	return body
 }
 
-func (m *model) viewServerList() string {
-	var b strings.Builder
-	b.WriteString(titleStyle.Render("wgtui") + "  " + subtitleStyle.Render("servers") + "\n\n")
+func (m *model) viewTerminalTooSmall() string {
+	if m.width < 32 || m.height < 8 {
+		return ansi.Truncate(
+			warningStyle.Render(fmt.Sprintf("Too small: %d×%d; need %d×%d", m.width, m.height, minimumTerminalWidth, minimumTerminalHeight)),
+			max(0, m.width), "",
+		)
+	}
+	message := titleStyle.Render("Terminal is too small") + "\n\n" +
+		fmt.Sprintf("Current       %d × %d\nMinimum       %d × %d\nRecommended   %d × %d\n\n",
+			m.width, m.height, minimumTerminalWidth, minimumTerminalHeight, recommendedWidth, recommendedHeight) +
+		warningStyle.Render("Resize the terminal to continue.") + "\n" +
+		dimStyle.Render("The current screen and its data are preserved.") + "\n\n" +
+		keyHint("Ctrl+C", "Quit")
+	return lipgloss.NewStyle().Padding(1, 2).Render(message)
+}
 
+func (m *model) viewServerList() string {
+	var list strings.Builder
 	servers := m.vault.Registry.Servers
 	if len(servers) == 0 {
-		b.WriteString(dimStyle.Render("No servers yet.") + "\n\n")
-		b.WriteString(textStyle.Render("Press ") + selectedStyle.Render("[a]") + textStyle.Render(" to add your first one."))
+		list.WriteString(dimStyle.Render("No servers yet.") + "\n\n")
+		list.WriteString(textStyle.Render("Press ") + selectedStyle.Render("n") + textStyle.Render(" to add one."))
 	} else {
 		for i, s := range servers {
-			line := fmt.Sprintf("%-20s %s@%s", s.DisplayName, orDefault(s.SSHUser, "(default user)"), s.SSHHostOrAlias)
+			line := s.DisplayName
 			if i == m.cursor {
-				b.WriteString(selectedStyle.Render("▶ "+line) + "\n")
+				list.WriteString(selectedStyle.Render("▶ "+line) + "\n")
 			} else {
-				b.WriteString("  " + textStyle.Render(line) + "\n")
+				list.WriteString("  " + textStyle.Render(line) + "\n")
 			}
 		}
 	}
 
-	b.WriteString("\n" + footerStyle.Render("[enter] open  [a] add  [e] edit  [x] remove  [↑/↓] move  [q] quit"))
-	return b.String()
+	if layoutModeFor(m.width, m.height) == layoutCompact {
+		var details string
+		if len(servers) > 0 {
+			s := servers[m.cursor]
+			details = "\n" + dimStyle.Render("Selected") + "  " + textStyle.Render(orDefault(s.DisplayName, s.ID)) +
+				"\n" + dimStyle.Render("SSH target") + "  " + textStyle.Render(s.SSHHostOrAlias) +
+				"\n\n" + dimStyle.Render("Press Enter to open this server.")
+		}
+		content := titleStyle.Render("Servers") + "\n\n" + list.String() + details
+		return appHeader("Server manager") + "\n" + fullPanel(m, content) + "\n" +
+			keyBar(m.width, "Enter Open", "n New", "? Help", "q Quit")
+	}
+
+	leftWidth := clamp(m.width/3, 24, 36)
+	rightWidth := max(30, m.width-leftWidth-5)
+	panelHeight := m.dashboardPanelHeight()
+	left := panelStyle.Width(leftWidth).Height(panelHeight).Render(titleStyle.Render("Servers") + "\n\n" + list.String())
+	var details string
+	if len(servers) == 0 {
+		details = titleStyle.Render("Welcome") + "\n\n" +
+			"wgtui manages standard WireGuard servers over SSH.\n\n" +
+			dimStyle.Render("No agent or control service is installed on the server.")
+	} else {
+		s := servers[m.cursor]
+		details = titleStyle.Render(orDefault(s.DisplayName, s.ID)) + "\n\n" +
+			fmt.Sprintf("ID          %s\nSSH target  %s\nSSH user    %s\nSSH port    %s\nIdentity    %s\n\n",
+				s.ID, s.SSHHostOrAlias, orDefault(s.SSHUser, "from SSH config"),
+				func() string {
+					if s.SSHPort == 0 {
+						return "from SSH config"
+					}
+					return fmt.Sprint(s.SSHPort)
+				}(),
+				orDefault(s.SSHIdentityFile, "agent / SSH config")) +
+			dimStyle.Render("Enter opens the server dashboard. Credentials are kept only in memory for that session.")
+	}
+	right := panelStyle.Width(rightWidth).Height(panelHeight).Render(details)
+	body := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+	return appHeader("Server manager") + "\n" + body + "\n" + keyBar(m.width, "Enter Open", "n New", "e Edit", "d Delete", "p Password", "? Help", "q Quit")
 }
 
 func (m *model) viewServerDetail() string {
-	var b strings.Builder
-	b.WriteString(titleStyle.Render("wgtui") + "  " + subtitleStyle.Render(m.selected.DisplayName) + "\n\n")
-	b.WriteString(tabsLine(m.tab) + "\n\n")
-
-	switch m.tab {
-	case tabPeers:
-		b.WriteString(m.viewPeersTab())
-	case tabDiagnose:
-		b.WriteString(m.viewDiagnoseTab())
-	default:
-		b.WriteString(m.viewOverviewTab())
+	panelHeight := m.dashboardPanelHeight()
+	header := m.viewServerHeader()
+	if layoutModeFor(m.width, m.height) == layoutWide && m.tab == tabPeers {
+		peersWidth, inspectorWidth := peerSplitPanelWidths(m.width)
+		peers := panelStyle.Width(peersWidth).Height(panelHeight).Render(tabsLine(m.tab) + "\n\n" + m.viewPeerList())
+		inspector := panelStyle.Width(inspectorWidth).Height(panelHeight).Render(m.viewSelectedPeerInspector())
+		body := lipgloss.JoinHorizontal(lipgloss.Top, peers, " ", inspector)
+		return header + "\n" + body + "\n" + detailFooter(m.tab, m.width)
 	}
 
-	b.WriteString("\n\n" + footerStyle.Render(detailFooter(m.tab)))
-	return b.String()
+	var content strings.Builder
+	content.WriteString(tabsLine(m.tab) + "\n\n")
+	switch m.tab {
+	case tabPeers:
+		content.WriteString(m.viewPeersTab())
+	case tabDiagnose:
+		content.WriteString(m.viewDiagnoseTab())
+	default:
+		content.WriteString(m.viewOverviewTab())
+	}
+
+	main := panelStyle.Width(max(40, m.width-4)).Height(panelHeight).Render(content.String())
+	return header + "\n" + main + "\n" + detailFooter(m.tab, m.width)
+}
+
+func (m *model) viewServerHeader() string {
+	connection := badge(warningStyle, "○", "connecting")
+	if m.detailErr != "" {
+		connection = badge(dangerStyle, "●", "error")
+	} else if m.detailSession != nil && !m.detailSession.closed {
+		connection = badge(successStyle, "●", "connected")
+	}
+	nameWidth := max(12, m.width-lipgloss.Width(connection)-12)
+	return appHeader(truncateCell(m.selected.DisplayName, nameWidth)) + "  " + connection
 }
 
 func tabsLine(active detailTab) string {
@@ -104,15 +220,113 @@ func tabsLine(active detailTab) string {
 	return strings.Join(parts, "   ")
 }
 
-func detailFooter(tab detailTab) string {
+func detailFooter(tab detailTab, width int) string {
+	if width < recommendedWidth {
+		switch tab {
+		case tabPeers:
+			return keyBar(width, "Enter Actions", "n New", "r Refresh", "? More", "Esc Back")
+		case tabDiagnose:
+			return keyBar(width, "r Refresh", "Tab Next", "? More", "Esc Back")
+		default:
+			return keyBar(width, "i Install", "c Configure", "r Refresh", "? More", "Esc Back")
+		}
+	}
 	switch tab {
 	case tabPeers:
-		return "[a] add peer  [enter] actions  [tab] switch  [q/esc] back"
+		return keyBar(width, "Enter Actions", "n New peer", "r Refresh", "Tab Next", "? Help", "Esc Back", "Ctrl+C Quit")
 	case tabDiagnose:
-		return "[r] refresh  [tab] switch  [q/esc] back"
+		return keyBar(width, "r Refresh", "Tab Next", "? Help", "Esc Back", "Ctrl+C Quit")
 	default:
-		return "[i] install  [c] configure  [r] refresh  [tab] switch  [q/esc] back"
+		return keyBar(width, "i Install", "c Configure", "r Refresh", "Tab Next", "? Help", "Esc Back", "Ctrl+C Quit")
 	}
+}
+
+func appHeader(section string) string {
+	return titleStyle.Render("wgtui") + "  " + subtitleStyle.Render(section)
+}
+
+func keyBar(width int, keys ...string) string {
+	parts := make([]string, 0, len(keys))
+	for _, hint := range keys {
+		key, label, ok := strings.Cut(hint, " ")
+		if !ok {
+			parts = append(parts, keyStyle.Render(hint))
+			continue
+		}
+		parts = append(parts, keyHint(key, label))
+	}
+	for len(parts) > 1 && lipgloss.Width(strings.Join(parts, "   ")) > width {
+		parts = parts[:len(parts)-1]
+	}
+	return ansi.Truncate(strings.Join(parts, "   "), max(0, width), "")
+}
+
+func keyHint(key, label string) string {
+	return keyStyle.Render(key) + " " + footerStyle.Render(label)
+}
+
+func formScreen(m *model, title, content string, keys ...string) string {
+	return appHeader(title) + "\n" + fullPanel(m, content) + "\n" + keyBar(m.width, keys...)
+}
+
+func fullPanel(m *model, content string) string {
+	return panelStyle.
+		Width(max(40, m.width-4)).
+		Height(m.fullPanelHeight()).
+		Render(content)
+}
+
+func (m *model) fullPanelHeight() int {
+	reserved := 5
+	if m.statusMsg != "" {
+		reserved = 8
+	}
+	return max(10, m.height-reserved)
+}
+
+func (m *model) dashboardPanelHeight() int {
+	reserved := 6
+	if m.statusMsg != "" {
+		reserved = 9
+	}
+	return max(10, m.height-reserved)
+}
+
+func clamp(v, low, high int) int {
+	if v < low {
+		return low
+	}
+	if v > high {
+		return high
+	}
+	return v
+}
+
+func (m *model) viewHelp() string {
+	if layoutModeFor(m.width, m.height) == layoutCompact {
+		text := titleStyle.Render("Keyboard help") + "\n\n" +
+			keyHint("?", "Open help") + "\n" +
+			keyHint("n", "Add server or peer") + "\n" +
+			keyHint("Enter", "Open / continue") + "\n" +
+			keyHint("Tab", "Switch dashboard tabs") + "\n" +
+			keyHint("↑/↓", "Move selection") + "\n" +
+			keyHint("Esc", "Back / cancel") + "\n" +
+			keyHint("Ctrl+C", "Quit safely")
+		return appHeader("Help") + "\n" + fullPanel(m, text) + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
+	}
+	text := titleStyle.Render("Keyboard help") + "\n\n" +
+		"?           Open this help\n" +
+		"n           Add server or peer\n" +
+		"e           Edit selected server\n" +
+		"r           Refresh the current view\n" +
+		"Enter       Open server or peer actions\n" +
+		"Tab         Switch dashboard tabs\n" +
+		"Arrows/j/k  Move selection\n" +
+		"Esc         Close dialog or go back\n" +
+		"q           Back (quit from server manager)\n" +
+		"Ctrl+C      Quit safely from every screen\n\n" +
+		dimStyle.Render("Network and destructive operations always show their own status or confirmation.")
+	return appHeader("Help") + "\n" + fullPanel(m, text) + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
 }
 
 func (m *model) viewOverviewTab() string {
@@ -124,22 +338,35 @@ func (m *model) viewOverviewTab() string {
 		b.WriteString(dangerStyle.Render("Error: "+m.detailErr) + "\n")
 	default:
 		r := m.report
-		b.WriteString(fmt.Sprintf("State: %s\n\n", m.state))
-		b.WriteString(fmt.Sprintf("System:    %s\n", orDefault(r.System.Kernel, "(unknown)")))
-		b.WriteString(fmt.Sprintf("OS:        %s %s\n", orDefault(r.System.OSID, "?"), r.System.OSVersionID))
-		b.WriteString(fmt.Sprintf("sudo:      %v\n\n", r.System.SudoAvailable))
+		if layoutModeFor(m.width, m.height) == layoutCompact {
+			return m.viewCompactOverview()
+		}
+		b.WriteString(dimStyle.Render("State") + "       " + serverStateBadge(string(m.state)) + "\n\n")
+		b.WriteString(dimStyle.Render("System") + "      " + textStyle.Render(orDefault(r.System.Kernel, "(unknown)")) + "\n")
+		b.WriteString(dimStyle.Render("OS") + "          " + textStyle.Render(orDefault(r.System.OSID, "?")+" "+r.System.OSVersionID) + "\n")
+		b.WriteString(dimStyle.Render("sudo") + "        " + boolStatus(r.System.SudoAvailable, "available", "unavailable") + "\n\n")
 
 		if !r.WireGuard.WgPresent {
 			b.WriteString(warningStyle.Render("WireGuard is not installed on this server.") + "\n")
-			b.WriteString(dimStyle.Render("Press [i] to install it.") + "\n")
+			b.WriteString(dimStyle.Render("Press i to install it.") + "\n")
 		} else {
-			b.WriteString(fmt.Sprintf("WireGuard: present=%v wg-quick=%v %s\n", r.WireGuard.WgPresent, r.WireGuard.WgQuickPresent, orDefault(r.WireGuard.WgVersion, "")))
+			b.WriteString(dimStyle.Render("WireGuard") + "   " + successStyle.Render("✓ installed") + "  " + textStyle.Render(orDefault(r.WireGuard.WgVersion, "")) + "\n")
 			if len(r.WireGuard.Interfaces) == 0 {
-				b.WriteString(dimStyle.Render("  No interfaces configured yet - press [c] to configure one.\n"))
+				b.WriteString(warningStyle.Render("  ○ No interfaces configured yet") + "  " + keyHint("c", "Configure") + "\n")
 			}
-			for name, d := range r.WireGuard.Interfaces {
-				b.WriteString(fmt.Sprintf("  %-8s active=%-5v config=%-5v drift=%-5v peers(runtime/persistent)=%d/%d\n",
-					name, d.Active, d.ConfigExists, d.Drift, len(d.RuntimePeerPublicKeys), len(d.PersistentPeerPublicKeys)))
+			interfaceNames := sortedInterfaceNames(r)
+			limit := max(1, m.dashboardPanelHeight()-14)
+			for _, name := range interfaceNames[:min(len(interfaceNames), limit)] {
+				d := r.WireGuard.Interfaces[name]
+				state := boolStatus(d.Active, "active", "stopped")
+				if d.Drift {
+					state = dangerStyle.Render("! drift detected")
+				}
+				b.WriteString("  " + selectedStyle.Render(name) + "  " + state +
+					fmt.Sprintf("  peers %d/%d", len(d.RuntimePeerPublicKeys), len(d.PersistentPeerPublicKeys)) + "\n")
+			}
+			if len(interfaceNames) > limit {
+				b.WriteString(dimStyle.Render(fmt.Sprintf("  … %d more interface(s); enlarge the terminal to show them\n", len(interfaceNames)-limit)))
 			}
 		}
 
@@ -154,14 +381,55 @@ func (m *model) viewOverviewTab() string {
 	return b.String()
 }
 
+func (m *model) viewCompactOverview() string {
+	r := m.report
+	var b strings.Builder
+	b.WriteString(dimStyle.Render("State") + "      " + serverStateBadge(string(m.state)) + "\n")
+	b.WriteString(dimStyle.Render("OS") + "         " + textStyle.Render(orDefault(r.System.OSID, "?")+" "+r.System.OSVersionID) + "\n")
+	b.WriteString(dimStyle.Render("sudo") + "       " + boolStatus(r.System.SudoAvailable, "available", "unavailable") + "\n\n")
+	if !r.WireGuard.WgPresent {
+		b.WriteString(warningStyle.Render("○ WireGuard is not installed") + "  " + keyHint("i", "Install") + "\n")
+	} else if len(r.WireGuard.Interfaces) == 0 {
+		b.WriteString(warningStyle.Render("○ No WireGuard interfaces") + "  " + keyHint("c", "Configure") + "\n")
+	} else {
+		interfaceNames := sortedInterfaceNames(r)
+		limit := max(1, m.dashboardPanelHeight()-9)
+		for _, name := range interfaceNames[:min(len(interfaceNames), limit)] {
+			d := r.WireGuard.Interfaces[name]
+			state := boolStatus(d.Active, "active", "stopped")
+			if d.Drift {
+				state = dangerStyle.Render("! drift")
+			}
+			b.WriteString(selectedStyle.Render(name) + "  " + state + fmt.Sprintf("  peers %d/%d\n", len(d.RuntimePeerPublicKeys), len(d.PersistentPeerPublicKeys)))
+		}
+		if len(interfaceNames) > limit {
+			b.WriteString(dimStyle.Render(fmt.Sprintf("… %d more interface(s)\n", len(interfaceNames)-limit)))
+		}
+	}
+	b.WriteString("\n" + dimStyle.Render("Outbound") + "   " + textStyle.Render(orDefault(r.Network.DefaultOutboundInterface, "unknown")))
+	return b.String()
+}
+
+func sortedInterfaceNames(report discovery.Report) []string {
+	names := make([]string, 0, len(report.WireGuard.Interfaces))
+	for name := range report.WireGuard.Interfaces {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 func (m *model) viewConfirm() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("wgtui") + "\n\n")
+	b.WriteString(titleStyle.Render("Review change") + "\n\n")
 	if m.confirmPlan != "" {
-		b.WriteString(panelStyle.Render(m.confirmPlan) + "\n\n")
+		b.WriteString(textStyle.Render("Nothing changes until you choose Apply.") + "\n\n")
+		b.WriteString(m.confirmPlan + "\n\n")
 	}
 	b.WriteString(m.confirmForm.View())
-	return b.String()
+	return appHeader(m.selected.DisplayName) + "\n" +
+		fullPanel(m, b.String()) + "\n" +
+		keyBar(m.width, "←/→ Choose", "Enter Confirm", "Esc Cancel", "Ctrl+C Quit")
 }
 
 // viewApplying is shown for the entire duration of an async apply step -
@@ -169,7 +437,10 @@ func (m *model) viewConfirm() string {
 // so any interactive host-key/password/sudo prompts render directly on
 // top of this text via the real terminal, not through Bubble Tea.
 func (m *model) viewApplying() string {
-	return titleStyle.Render("wgtui") + "\n\n" + textStyle.Render("Applying: "+m.confirmTitle) + "\n" + dimStyle.Render("Working - answer any prompts that appear below.")
+	return appHeader(m.selected.DisplayName) + "\n" +
+		fullPanel(m,
+			titleStyle.Render("Applying change")+"\n\n"+textStyle.Render(m.confirmTitle)+"\n\n"+
+				dimStyle.Render("Please wait. The operation is validated and rolled back automatically on failure."))
 }
 
 func orDefault(s, def string) string {

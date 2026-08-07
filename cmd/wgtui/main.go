@@ -12,6 +12,10 @@ import (
 )
 
 func main() {
+	if os.Geteuid() == 0 {
+		fmt.Fprintln(os.Stderr, "wgtui: refusing to run as root; run it as your normal user so the encrypted vault, client keys, and SSH session stay in that user's home directory")
+		os.Exit(1)
+	}
 	// No arguments launches the interactive TUI (SPEC.md §2); "mcp" runs
 	// the MCP server front end over stdio; any other subcommand goes
 	// through the non-interactive CLI (§21). main is the only place that

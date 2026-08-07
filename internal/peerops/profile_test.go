@@ -66,6 +66,16 @@ func TestRenderQRTerminal(t *testing.T) {
 	}
 }
 
+func TestRenderQRPNG(t *testing.T) {
+	png, err := RenderQRPNG("[Interface]\nPrivateKey = x\n")
+	if err != nil {
+		t.Fatalf("RenderQRPNG: %v", err)
+	}
+	if len(png) < 8 || string(png[:8]) != "\x89PNG\r\n\x1a\n" {
+		t.Fatalf("result is not a PNG: %x", png[:min(len(png), 8)])
+	}
+}
+
 func TestSplitTrim(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -94,8 +104,16 @@ func TestRotateProfileParams_NoOldProfile(t *testing.T) {
 	if len(allowedIPs) != 2 || allowedIPs[0] != "0.0.0.0/0" {
 		t.Errorf("allowedIPs = %v, want full-tunnel default", allowedIPs)
 	}
-	if dns != nil {
-		t.Errorf("dns = %v, want nil", dns)
+	if !reflect.DeepEqual(dns, DefaultDNS()) {
+		t.Errorf("dns = %v, want %v", dns, DefaultDNS())
+	}
+}
+
+func TestRotateProfileParams_OldProfileWithoutDNSGetsDefault(t *testing.T) {
+	oldProfile := "[Interface]\nPrivateKey = old\nAddress = 10.10.0.5/32\n\n[Peer]\nPublicKey = server\nEndpoint = example.com:51820\nAllowedIPs = 0.0.0.0/0, ::/0\n"
+	_, _, _, _, dns := RotateProfileParams(oldProfile, true, []string{"10.10.0.5/32"}, "fallback.example", 51820)
+	if !reflect.DeepEqual(dns, DefaultDNS()) {
+		t.Errorf("dns = %v, want %v", dns, DefaultDNS())
 	}
 }
 

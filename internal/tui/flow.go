@@ -17,6 +17,7 @@ type discoveryMsg struct {
 	report discovery.Report
 	state  discovery.State
 	err    string
+	sess   *session
 }
 
 type peerListMsg struct {
@@ -46,6 +47,7 @@ type planReadyMsg struct {
 	// revoke's plan needs its own 3-question form instead of a single
 	// yes/no - set only for that flow.
 	multiStep bool
+	borrowed  bool
 }
 
 // actionDoneMsg is posted once a confirmed action's apply phase finishes.
@@ -62,12 +64,15 @@ type actionDoneMsg struct {
 
 func (m *model) handlePlanReady(msg planReadyMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		msg.sess.close()
+		if !msg.borrowed {
+			msg.sess.close()
+		}
 		m.setError(msg.err)
 		m.screen = msg.cancelScreen
 		return m, nil
 	}
 	m.activeSession = msg.sess
+	m.activeSessionBorrowed = msg.borrowed
 	m.confirmTitle = msg.title
 	m.confirmPlan = msg.plan
 	m.onCancelled = msg.cancelScreen
@@ -100,8 +105,7 @@ func (m *model) updateConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.confirmForm.State {
 	case huh.StateCompleted:
 		if !m.confirmYes {
-			m.activeSession.close()
-			m.activeSession = nil
+			m.releaseActiveSession()
 			m.screen = m.onCancelled
 			return m, nil
 		}
@@ -117,8 +121,7 @@ func (m *model) updateConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenApplying
 		return m, m.onConfirmed(m)
 	case huh.StateAborted:
-		m.activeSession.close()
-		m.activeSession = nil
+		m.releaseActiveSession()
 		m.screen = m.onCancelled
 		return m, nil
 	}
@@ -139,7 +142,6 @@ func (m *model) handleActionDone(msg actionDoneMsg) (tea.Model, tea.Cmd) {
 	if msg.done != nil {
 		cmd = msg.done(m)
 	}
-	m.activeSession.close()
-	m.activeSession = nil
+	m.releaseActiveSession()
 	return m, cmd
 }
