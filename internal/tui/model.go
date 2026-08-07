@@ -4,42 +4,159 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
+	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 
+	"github.com/DMYTROSKORIN/wgtui/internal/diagnostics"
 	"github.com/DMYTROSKORIN/wgtui/internal/discovery"
 	"github.com/DMYTROSKORIN/wgtui/internal/domain"
+	"github.com/DMYTROSKORIN/wgtui/internal/peerview"
 	"github.com/DMYTROSKORIN/wgtui/internal/profilevault"
 	"github.com/DMYTROSKORIN/wgtui/internal/sshtransport"
 )
 
+// screen identifies which top-level view is active. wgtui is a real
+// interactive management app (server add/edit/remove, install/configure,
+// full peer lifecycle), not just a read-only viewer over the CLI - every
+// mutation the CLI can do has a screen here too.
 type screen int
 
 const (
 	screenServerList screen = iota
+	screenServerForm
+	screenServerRemoveConfirm
 	screenServerDetail
+	screenConfirm
+	screenConfigureForm
+	screenPeerForm
+	screenPeerReveal
+	screenPeerActionMenu
+	screenRevokeConfirm
+	screenPeerExportForm
 )
 
-// model is Stage 1's read-only TUI (SPEC.md §20.1, §20.2): browse the
-// local server registry and drill into one server's discovery report and
-// peer list. Mutating actions (add/edit/forget servers, peer
-// add/disable/rotate/revoke) are Stage 2 work - `wgtui server add` on the
-// CLI covers registration for now.
+type detailTab int
+
+const (
+	tabOverview detailTab = iota
+	tabPeers
+	tabDiagnose
+)
+
+// session holds one open SSH connection across several TUI screens (e.g.
+// connect -> show a plan -> confirm -> apply), mirroring how a single CLI
+// command holds one connection open from its first remote call to its
+// last. Every code path that creates a session (confirm, cancel, or an
+// error at any step) must eventually call close(); it's idempotent so
+// that's safe to do from more than one place defensively.
+type session struct {
+	client  *sshtransport.Client
+	prompts sshtransport.Prompts
+	cleanup func()
+	closed  bool
+}
+
+func (s *session) close() {
+	if s == nil || s.closed {
+		return
+	}
+	s.closed = true
+	s.cleanup()
+}
+
+// model is wgtui's single Bubble Tea model. Each screen keeps its state in
+// a handful of fields here rather than as separate tea.Model
+// implementations - screens are simple enough, and plenty of state
+// (selected server, active session, vault) is naturally shared between
+// them, so one model with a screen-dispatching Update/View is less
+// machinery than composing many small models.
 type model struct {
 	vault     *profilevault.Vault
 	vaultPath string
 	program   *tea.Program
 
 	screen screen
-	cursor int
+	cursor int // server list cursor
 
+	statusMsg string // one-line banner shown on return to a screen
+	statusErr bool
+
+	activeSession *session
+
+	// server list / add / edit / remove
+	selected   domain.Server
+	serverForm *huh.Form
+	serverEdit bool
+	fID        string
+	fName      string
+	fHost      string
+	fUser      string
+	fPort      string
+	fIdentity  string
+	removeForm *huh.Form
+
+	// server detail
+	tab       detailTab
 	loading   bool
 	report    discovery.Report
 	state     discovery.State
 	detailErr string
-	selected  domain.Server
+
+	// peers tab
+	peerTable        table.Model
+	peers            []peerview.Peer
+	peersLoaded      bool
+	peersErr         string
+	selectedPeer     peerview.Peer
+	actionMenu       *huh.Form
+	actionMenuChoice *string
+	exportForm       *huh.Form
+	exportPath       string
+
+	// generic single-step plan/confirm (install, disable, enable, rotate)
+	confirmForm  *huh.Form
+	confirmTitle string
+	confirmPlan  string
+	confirmYes   bool
+	onConfirmed  func(m *model) tea.Cmd
+	onCancelled  screen
+
+	// revoke's 3-part confirm (server access / delete profile / delete metadata)
+	revokeForm           *huh.Form
+	revokeYes            bool
+	revokeDeleteProfile  bool
+	revokeDeleteMetadata bool
+
+	// peer add form
+	peerForm       *huh.Form
+	pfName         string
+	pfFullTunnel   bool
+	pfSplitCIDRs   string
+	pfKeepalive    string
+	pfDNS          string
+	pfEndpointHost string
+	pfPSK          bool
+	revealProfile  string
+	revealName     string
+	revealMode     string
+
+	// configure wizard form
+	cfForm              *huh.Form
+	cfInterface         string
+	cfVPNCIDR           string
+	cfPort              string
+	cfOutboundInterface string
+	cfFullTunnelDefault bool
+	cfSuggestedCIDR     string
+	cfDetectedOutbound  string
+
+	// diagnose tab
+	checks       []diagnostics.Check
+	checksLoaded bool
+	checksErr    string
 }
 
 func newModel(v *profilevault.Vault, vaultPath string) *model {
@@ -48,34 +165,106 @@ func newModel(v *profilevault.Vault, vaultPath string) *model {
 
 func (m *model) Init() tea.Cmd { return nil }
 
-type discoveryMsg struct {
-	report discovery.Report
-	state  discovery.State
-	err    string
-}
-
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	keyMsg, isKey := msg.(tea.KeyMsg)
-
-	if dm, ok := msg.(discoveryMsg); ok {
+	switch msg := msg.(type) {
+	case discoveryMsg:
 		m.loading = false
-		m.report = dm.report
-		m.state = dm.state
-		m.detailErr = dm.err
+		m.report = msg.report
+		m.state = msg.state
+		m.detailErr = msg.err
+		return m, nil
+	case peerListMsg:
+		m.peersLoaded = true
+		m.peersErr = msg.err
+		m.peers = msg.peers
+		m.rebuildPeerTable()
+		return m, nil
+	case diagnoseMsg:
+		m.checksLoaded = true
+		m.checksErr = msg.err
+		m.checks = msg.checks
+		return m, nil
+	case planReadyMsg:
+		return m.handlePlanReady(msg)
+	case actionDoneMsg:
+		return m.handleActionDone(msg)
+	case configurePrepMsg:
+		return m.handleConfigurePrep(msg)
+	case errMsg:
+		m.setError(msg.err)
 		return m, nil
 	}
 
-	if !isKey {
-		return m, nil
-	}
+	keyMsg, isKey := msg.(tea.KeyMsg)
 
 	switch m.screen {
 	case screenServerList:
-		return m.updateServerList(keyMsg)
+		if isKey {
+			return m.updateServerList(keyMsg)
+		}
+	case screenServerForm:
+		return m.updateServerForm(msg)
+	case screenServerRemoveConfirm:
+		return m.updateRemoveConfirm(msg)
 	case screenServerDetail:
-		return m.updateServerDetail(keyMsg)
+		if isKey {
+			return m.updateServerDetail(keyMsg)
+		}
+		if m.tab == tabPeers {
+			var cmd tea.Cmd
+			m.peerTable, cmd = m.peerTable.Update(msg)
+			return m, cmd
+		}
+	case screenConfirm:
+		return m.updateConfirm(msg)
+	case screenConfigureForm:
+		return m.updateConfigureForm(msg)
+	case screenPeerForm:
+		return m.updatePeerForm(msg)
+	case screenPeerReveal:
+		if isKey {
+			return m.updatePeerReveal(keyMsg)
+		}
+	case screenPeerActionMenu:
+		return m.updateActionMenu(msg)
+	case screenRevokeConfirm:
+		return m.updateRevokeConfirm(msg)
+	case screenPeerExportForm:
+		return m.updateExportForm(msg)
 	}
 	return m, nil
+}
+
+// releaseTerminalAndRun runs fn with the real terminal (Bubble Tea's raw
+// mode released), restoring it again once fn returns - every flow that
+// needs an interactive host-key/password/sudo prompt goes through this,
+// since Bubble Tea otherwise owns stdin in raw mode.
+func (m *model) releaseTerminalAndRun(fn func() tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		if err := m.program.ReleaseTerminal(); err != nil {
+			return errMsg{err: err}
+		}
+		defer m.program.RestoreTerminal()
+		return fn()
+	}
+}
+
+// clearStatus drops any banner from a previous screen before entering a
+// new one, so a stale success/error message can't linger where it no
+// longer applies.
+func (m *model) clearStatus() {
+	m.statusMsg = ""
+	m.statusErr = false
+}
+
+func (m *model) setError(err error) {
+	m.statusMsg = err.Error()
+	m.statusErr = true
+}
+
+func (m *model) setStatus(msg string) {
+	m.statusMsg = msg
+	m.statusErr = false
 }
 
 func (m *model) updateServerList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -91,15 +280,38 @@ func (m *model) updateServerList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor < len(servers)-1 {
 			m.cursor++
 		}
+	case "a":
+		m.clearStatus()
+		m.startServerForm(false)
+		return m, m.serverForm.Init()
+	case "e":
+		if len(servers) == 0 {
+			return m, nil
+		}
+		m.clearStatus()
+		m.selected = servers[m.cursor]
+		m.startServerForm(true)
+		return m, m.serverForm.Init()
+	case "x":
+		if len(servers) == 0 {
+			return m, nil
+		}
+		m.clearStatus()
+		m.startRemoveConfirm(servers[m.cursor])
+		return m, m.removeForm.Init()
 	case "enter":
 		if len(servers) == 0 {
 			return m, nil
 		}
+		m.clearStatus()
 		m.selected = servers[m.cursor]
 		m.screen = screenServerDetail
+		m.tab = tabOverview
 		m.loading = true
 		m.detailErr = ""
 		m.report = discovery.Report{}
+		m.peersLoaded = false
+		m.checksLoaded = false
 		return m, m.connectAndDiscoverCmd(m.selected)
 	}
 	return m, nil
@@ -111,14 +323,50 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "q", "esc":
 		m.screen = screenServerList
+		m.clearStatus()
+		return m, nil
+	case "tab":
+		m.tab = (m.tab + 1) % 3
+		if m.tab == tabPeers && !m.peersLoaded {
+			return m, m.loadPeersCmd()
+		}
+		if m.tab == tabDiagnose && !m.checksLoaded {
+			return m, m.loadDiagnoseCmd()
+		}
 		return m, nil
 	case "r":
-		if m.loading {
-			return m, nil
+		switch m.tab {
+		case tabPeers:
+			m.peersLoaded = false
+			return m, m.loadPeersCmd()
+		case tabDiagnose:
+			m.checksLoaded = false
+			return m, m.loadDiagnoseCmd()
+		default:
+			if m.loading {
+				return m, nil
+			}
+			m.loading = true
+			m.detailErr = ""
+			return m, m.connectAndDiscoverCmd(m.selected)
 		}
-		m.loading = true
-		m.detailErr = ""
-		return m, m.connectAndDiscoverCmd(m.selected)
+	case "i":
+		if m.tab == tabOverview && !m.loading {
+			return m, m.startInstallWizard()
+		}
+	case "c":
+		if m.tab == tabOverview && !m.loading {
+			return m, m.startConfigurePrep()
+		}
+	case "a":
+		if m.tab == tabPeers {
+			m.startPeerForm()
+			return m, m.peerForm.Init()
+		}
+	case "enter":
+		if m.tab == tabPeers {
+			return m.openActionMenu()
+		}
 	}
 	return m, nil
 }
@@ -126,34 +374,20 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // connectAndDiscoverCmd dials the server and runs full discovery. It must
 // release the terminal first: Bubble Tea owns stdin in raw mode, but
 // Dial/discovery need to interactively prompt for a host-key confirmation
-// or a password on the same terminal (SPEC.md §10.2, §10.3).
+// or a password on the same terminal.
 func (m *model) connectAndDiscoverCmd(s domain.Server) tea.Cmd {
-	return func() tea.Msg {
-		if err := m.program.ReleaseTerminal(); err != nil {
-			return discoveryMsg{err: fmt.Sprintf("release terminal: %v", err)}
-		}
-		defer m.program.RestoreTerminal()
-
+	return m.releaseTerminalAndRun(func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
-		controlDir, err := os.MkdirTemp("", "wgtui-ssh-*")
-		if err != nil {
-			return discoveryMsg{err: err.Error()}
-		}
-		defer os.RemoveAll(controlDir)
-
-		client := sshtransport.NewClient(sshtransport.Target{
-			HostOrAlias: s.SSHHostOrAlias, Port: s.SSHPort, User: s.SSHUser, IdentityFile: s.SSHIdentityFile,
-		}, filepath.Join(controlDir, "cm.sock"))
-
 		prompts := newTerminalPrompts(os.Stdout)
-		if err := client.Dial(ctx, prompts); err != nil {
+		sess, err := dial(ctx, s, prompts)
+		if err != nil {
 			return discoveryMsg{err: fmt.Sprintf("connect: %v", err)}
 		}
-		defer client.Close(ctx)
+		defer sess.close()
 
-		report := discovery.Discover(ctx, client, prompts)
+		report := discovery.Discover(ctx, sess.client, prompts)
 		return discoveryMsg{report: report, state: discovery.Classify(report)}
-	}
+	})
 }

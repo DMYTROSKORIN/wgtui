@@ -25,7 +25,7 @@ func openOrCreateVault(out io.Writer) (*profilevault.Vault, string, error) {
 
 func createVault(out io.Writer, path string) (*profilevault.Vault, string, error) {
 	fmt.Fprintln(out, "No local vault found - set a master password to protect it.")
-	fmt.Fprintln(out, "This protects your local server list and, from Stage 2 on, generated client profiles. It is never sent anywhere and cannot be recovered if lost.")
+	fmt.Fprintln(out, "This protects your locally stored server list and any generated client private keys. It's never sent anywhere, and can't be recovered if lost - keep it somewhere safe.")
 	for {
 		pw1, err := promptHiddenInput(out, "New master password: ")
 		if err != nil {
