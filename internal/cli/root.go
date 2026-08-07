@@ -59,6 +59,7 @@ Usage:
   wgtui peer export <id> <peer-name> --output <path> [--force]
   wgtui peer import <id> --file <path> --name <name> [--interface <if>]
   wgtui diagnose <id> [--json]
+  wgtui mcp                    run as an MCP server over stdio, for AI agent front ends (see docs/ARCHITECTURE.md)
   wgtui version
 
 Every command that reaches the network prompts interactively for the SSH

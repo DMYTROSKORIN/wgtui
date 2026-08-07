@@ -225,14 +225,16 @@ deliberately absent from both runtime and persistent config - still appears with
 own private key and only registers it if that key is actually found on the server, never
 fabricating a match.
 
-### Future extension: MCP server front-end (post-MVP, not started, but important)
+### MCP server front-end (`internal/mcpserver`)
 
 Spec §3.1.5 already asks for a non-interactive interface "for automation and AI agents."
-A natural post-MVP addition is a third thin front end, `internal/mcpserver`, exposing the
-same request/response API as `cli`/`tui` over MCP — so an external AI agent can drive
-`wgtui` the same way a human drives the TUI: same validation, same plan-before-apply, same
-explicit-confirmation requirement for every mutation. It changes nothing about the trust
-model, because it is still the human confirming a shown plan.
+`internal/mcpserver` is a third thin front end, alongside `cli` and `tui`, exposing the same
+`discovery`/`peerops`/`transaction`/`osadapter`/`profilevault`/`sshtransport` layers over MCP
+— so an external AI agent can drive `wgtui` the same way a human drives the TUI: same
+validation, same plan-before-apply, same explicit-confirmation requirement for every
+mutation. It never calls into `cli` or `tui`, and neither of them calls into it. Run it with
+`wgtui mcp` (dispatched from `cmd/wgtui/main.go`, the one place that decides among all three
+front ends), serving tools over stdio (`mcp.StdioTransport`).
 
 **Why this matters (not just a nice-to-have, per project owner):** without it, an AI agent
 that wants to help a user manage WireGuard peers has to shell out to the `cli` and parse
@@ -242,9 +244,39 @@ no guardrails of its own. An MCP front end turns `wgtui` into a backend two diff
 callers share through the same validated layer - a human via `tui`, an agent via MCP - each
 getting the same guarantees (structured errors instead of scraped text, the same plan/
 confirm contract, no way to bypass it) rather than the agent needing to be independently
-trustworthy about respecting them. Deprioritized only because Stage 4's required checklist
-items came first, not because it's marginal - pick this up before/alongside Stage 5 if
-nothing else is more pressing.
+trustworthy about respecting them.
+
+**Tools registered** (`internal/mcpserver/server.go`): `list_servers`, `server_inspect`,
+`server_diagnose`, `peer_list` are read-only. `peer_add`, `peer_disable`, `peer_enable`,
+`peer_revoke`, `peer_rotate` mutate and are gated by a `confirm bool` argument on every
+call: `confirm=false` (the default) only computes and returns the same plan a human would
+see and changes nothing on the server or in the local vault; `confirm=true` applies it. Each
+mutating tool's `Description` explicitly tells the calling agent never to set `confirm=true`
+without the user having seen and approved a prior `confirm=false` preview - this stands in
+for cli's interactive `Apply? [y/N]` and tui's plan screen, since MCP has no terminal to
+render either on.
+
+**Credential and host-key model** differs from cli/tui out of necessity - see
+`docs/THREAT_MODEL.md` T10 for the full trade-off. In short: stdin/stdout *are* the MCP
+protocol channel, so SSH/sudo passwords are passed per tool call as arguments
+(`internal/mcpserver/credentials.go`'s `Credentials`, embedded in every tool that connects)
+rather than prompted for interactively, and used only in-memory for that single call. Host
+key confirmation always refuses - a server's first connection must be established once from
+a real terminal (`wgtui server inspect`, cli or tui) before it can be driven through MCP.
+`peer_add`'s result never includes the generated private key or rendered client profile
+(unlike cli's `--show`/`--qr`/`--output`); retrieving the actual profile file is left to
+`wgtui peer export`, keeping every mcpserver tool response secret-free by default.
+
+**Shared extraction:** the diagnostic checklist (spec §22) and peer-list reconciliation
+(spec §16.1) were promoted from `cli`-private helpers into their own packages,
+`internal/diagnostics` and `internal/peerview`, once `mcpserver` became a third consumer of
+logic expected to keep growing (both packages had already grown once, adding fields like
+`Interface`/`Managed`, since Stage 3/4). Small, stable per-front-end helpers (terminal
+prompts, vault bootstrap) stay duplicated between `cli`/`tui`/`mcpserver` deliberately - the
+line is whether a third copy of *evolving* logic is worth avoiding, not duplication itself.
+`internal/peerview` exists as its own package rather than folding into `peerops` because it
+needs `profilevault.PeerMetadata`, and `peerops` never imports `profilevault` directly (see
+the `peerops` section above).
 
 **Explicitly rejected:** `wgtui` calling out to an external AI service to make a decision
 *on behalf of* the user for an ambiguous or unresolved situation (e.g. an install choice,

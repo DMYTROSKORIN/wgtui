@@ -126,6 +126,44 @@ destroyed when the user believed it kept.
 delete local profile, delete metadata — with server revocation not implying local file
 deletion (spec §17.5). No default silently does the more destructive thing.
 
+### T10 — Credential and secret exposure via the MCP front end
+
+*Attack surface:* `internal/mcpserver` (see docs/ARCHITECTURE.md) lets an AI agent drive
+`wgtui` over the MCP stdio transport instead of a human at a terminal. Two properties of
+that transport change the threat picture from T2/T5 above:
+
+1. **Credentials as tool arguments, not terminal input.** Stdin/stdout *are* the MCP
+   protocol channel, so there is no terminal left to prompt on (unlike cli/tui's
+   `term.ReadPassword`). SSH and sudo passwords are instead passed per tool call as JSON
+   arguments (`internal/mcpserver/credentials.go`'s `Credentials` struct) and used
+   transiently in-memory — never cached across calls, never written to disk. T2's mitigation
+   (never in `ps`/shell history/env) still holds for the process itself, but the value now
+   necessarily passes through the calling agent's conversation/context to reach the tool
+   call at all. That is a different exposure surface, not a strictly smaller or larger one:
+   whether it's better or worse than a local terminal prompt depends on how the calling
+   agent's own context is stored, logged, or retained — something `wgtui` has no visibility
+   or control over. Tool descriptions explicitly instruct the calling agent to only pass a
+   credential the user has just supplied for that specific call, never to invent one or
+   reuse one from earlier in the conversation.
+2. **No human to verify a host key out of band.** T5's mitigation (interactive fingerprint
+   confirmation) has no terminal to render on and no human present to answer even if there
+   were. `Credentials.prompts()` therefore hard-codes host-key confirmation to always refuse
+   — a first-time connection to any server must be established once from a real terminal
+   (`wgtui server inspect`, cli or tui) before that server can be driven through MCP. This
+   makes MCP strictly unable to establish first trust in a host key; it can only reuse trust
+   a human already established.
+
+*Mitigation:* Every mutating tool is gated behind an explicit `confirm bool` argument
+(default `false`, preview-only — computes the same plan a human would see, but changes
+nothing and generates no keys); each tool's `Description` tells the calling agent never to
+set `confirm=true` without the user having seen and approved a prior `confirm=false`
+preview, mirroring cli's interactive `Apply? [y/N]` and tui's plan screen. Tool *results* are
+kept secret-free by design: `peer_add`'s response never includes the generated private key
+or rendered client profile (unlike cli's optional `--show`/`--qr`/`--output`) — retrieving
+the actual profile file is left to the existing `wgtui peer export` CLI command, so no
+`wgtui`-generated secret is ever placed in an MCP tool result or, by extension, an agent's
+context, by default.
+
 ## Explicitly out of scope for MVP (spec §3.2, §12.2, §6.1)
 
 - Compromise of the remote server's OS/kernel outside of what standard WireGuard + SSH
