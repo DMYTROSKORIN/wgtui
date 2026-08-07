@@ -64,6 +64,17 @@ Full analysis: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 go build ./...
 ```
 
+## Development
+
+Every push is scanned with [Semgrep](https://semgrep.dev) (`p/golang`, `p/security-audit`,
+`p/secrets`) — enforced server-side in CI (`.github/workflows/ci.yml`) and, once you've run
+the one-time setup below, locally too:
+
+```bash
+scripts/install-git-hooks.sh   # once per clone: enables the pre-push semgrep gate
+scripts/semgrep-scan.sh        # run it manually any time
+```
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

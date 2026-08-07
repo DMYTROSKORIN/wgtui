@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Blocks `git push` unless semgrep (scripts/semgrep-scan.sh) passes clean.
+# This is local, fast feedback only - it can be bypassed with `--no-verify`
+# or on a fresh clone that never ran scripts/install-git-hooks.sh, which is
+# exactly why .github/workflows/ci.yml runs the same script server-side as
+# the actual non-bypassable gate. Enable this hook with:
+#   scripts/install-git-hooks.sh
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+if ! command -v semgrep >/dev/null 2>&1; then
+	echo "pre-push: semgrep is not installed - refusing to push without a security scan." >&2
+	echo "Install it (e.g. \`pip install semgrep\` or \`brew install semgrep\`) or, if you" >&2
+	echo "must skip this once, use \`git push --no-verify\`." >&2
+	exit 1
+fi
+
+echo "pre-push: running semgrep..."
+if ! scripts/semgrep-scan.sh; then
+	echo "pre-push: semgrep found issues - push blocked. Fix them, or \`git push --no-verify\` to override." >&2
+	exit 1
+fi
+
+echo "pre-push: semgrep clean."
