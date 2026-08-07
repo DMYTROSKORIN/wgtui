@@ -65,36 +65,34 @@ go build ./...
 ```
 
 <details>
-<summary>Installing a release (once one exists)</summary>
+<summary>Installing a release</summary>
 
 This is a private repo for personal use, not distributed to third parties - releases are
-`.deb`/`.rpm`/`.tar.gz` on GitHub Releases only, no Homebrew tap and no GPG signature (see
-`.goreleaser.yaml` for the reasoning). No version has been tagged yet -
-`.github/workflows/release.yml` (triggered by a `vX.Y.Z` git tag) builds these once one is.
-Track progress in the [Stage 5 issue](https://github.com/DMYTROSKORIN/wgtui/issues/6).
+`.deb`/`.rpm`/`.tar.gz` on GitHub Releases only (`.github/workflows/release.yml`, triggered
+by a `vX.Y.Z` git tag), no Homebrew tap and no GPG signature (see `.goreleaser.yaml` for the
+reasoning).
 
 ```bash
-# download from the release (private repo - needs `gh` or an authenticated request)
-gh release download vX.Y.Z --repo DMYTROSKORIN/wgtui
-
-# Debian/Ubuntu
-sudo dpkg -i wgtui_*.deb
-
-# Fedora
-sudo rpm -i wgtui_*.rpm
+scripts/install.sh          # latest release, or: scripts/install.sh vX.Y.Z
 ```
 
-Every release is checksummed (`checksums.txt`, verify with `sha256sum --ignore-missing -c
-checksums.txt`). `wgtui version` checks GitHub Releases for a newer version and prints a
-one-line notice if one exists; it never downloads or installs anything itself.
+The recommended way to install: no root, ever. Downloads via `gh` (needed either way - the
+repo is private, so a plain `curl` of the asset URL can't authenticate), verifies
+`checksums.txt`, and installs the binary, man page, and shell completions entirely under
+`~/.local/` - the same user-owned-prefix approach as rustup/pipx/cargo, not a system package
+manager. Re-run it after every release to update.
 
-Shell completion and a man page ship in every package above, or can be generated directly
-from a `wgtui` binary you've already built:
+`.deb`/`.rpm` remain available if you specifically want a system-managed install instead
+(these do need root, because that's what a system package manager is):
 
 ```bash
-wgtui completion bash > /etc/bash_completion.d/wgtui   # or zsh / fish
-man docs/man/wgtui.1                                     # from a source checkout
+sudo dpkg -i wgtui_*.deb   # Debian/Ubuntu
+sudo rpm -i wgtui_*.rpm    # Fedora
 ```
+
+`wgtui version` checks GitHub Releases for a newer version and prints a one-line notice if
+one exists; it never downloads or installs anything itself - `scripts/install.sh` is always
+a deliberate, separate step.
 
 </details>
 
