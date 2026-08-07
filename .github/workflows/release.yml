@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # Same job-level `container: image: semgrep/semgrep` shape as
+  # .github/workflows/ci.yml's semgrep job (verified working there against
+  # a real GitHub-hosted runner). semgrep's docker image needs the repo
+  # mounted at /src specifically to recognize it's running in a container -
+  # confirmed locally that a plain `uses: docker://...` step's
+  # /github/workspace mount does *not* satisfy that check, while
+  # job-level `container:` does. Every release gets scanned too, since a
+  # tag push is a separate ref from whatever branch push already scanned
+  # this commit.
+  semgrep:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/semgrep-scan.sh
+
+  goreleaser:
+    needs: semgrep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Guarded so a release triggered before GPG_PRIVATE_KEY is configured
+      # fails with goreleaser's own clear "no signing key" error from the
+      # step below, rather than this action's less obvious one about an
+      # empty key. Either way it fails closed - no unsigned release is
+      # ever published silently (spec §28: "signed releases").
+      - name: Import GPG key
+        id: gpg
+        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.gpg.outputs.fingerprint }}

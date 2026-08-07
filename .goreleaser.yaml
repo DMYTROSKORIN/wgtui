@@ -1,0 +1,127 @@
+version: 2
+
+project_name: wgtui
+
+before:
+  hooks:
+    - go mod tidy
+    # Shell completions are static content (internal/cli/completion.go) -
+    # generated once here via `go run` on the build host rather than by
+    # executing per-target cross-compiled binaries (which can't run on a
+    # different OS/arch than the CI runner anyway).
+    - sh -c 'mkdir -p completions && go run ./cmd/wgtui completion bash > completions/wgtui.bash'
+    - sh -c 'mkdir -p completions && go run ./cmd/wgtui completion zsh > completions/_wgtui'
+    - sh -c 'mkdir -p completions && go run ./cmd/wgtui completion fish > completions/wgtui.fish'
+
+builds:
+  - id: wgtui
+    main: ./cmd/wgtui
+    binary: wgtui
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/DMYTROSKORIN/wgtui/internal/cli.Version={{.Version}}
+      - -X github.com/DMYTROSKORIN/wgtui/internal/mcpserver.Version={{.Version}}
+
+archives:
+  - id: wgtui
+    formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+      - docs/man/wgtui.1
+      - completions/*
+
+checksum:
+  name_template: "checksums.txt"
+
+# Detached-signs checksums.txt with GPG so `gpg --verify` can confirm a
+# release came from this project (spec §28: "signed releases"). Requires
+# GPG_FINGERPRINT/GPG_PRIVATE_KEY/PASSPHRASE secrets configured in the repo
+# before a real (non-snapshot) release can run - see
+# .github/workflows/release.yml.
+signs:
+  - id: checksum-sig
+    cmd: gpg
+    signature: "${artifact}.sig"
+    args:
+      - "--batch"
+      - "-u"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+    artifacts: checksum
+
+nfpms:
+  - id: wgtui
+    package_name: wgtui
+    vendor: DMYTROSKORIN
+    homepage: https://github.com/DMYTROSKORIN/wgtui
+    maintainer: "D.SKORIN <dev@skorin.online>"
+    description: Terminal UI and CLI for managing remote WireGuard servers over SSH
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    contents:
+      - src: ./docs/man/wgtui.1
+        dst: /usr/share/man/man1/wgtui.1
+      - src: ./completions/wgtui.bash
+        dst: /usr/share/bash-completion/completions/wgtui
+      - src: ./completions/_wgtui
+        dst: /usr/share/zsh/site-functions/_wgtui
+      - src: ./completions/wgtui.fish
+        dst: /usr/share/fish/vendor_completions.d/wgtui.fish
+
+# Requires a pre-existing DMYTROSKORIN/homebrew-tap repository and a
+# HOMEBREW_TAP_GITHUB_TOKEN secret with write access to it - see
+# .github/workflows/release.yml.
+#
+# `brews` is soft-deprecated in favor of `homebrew_casks` (goreleaser
+# v2.10+), but still functional (goreleaser.com/deprecations#brews) and
+# was verified end-to-end locally (`goreleaser release --snapshot`).
+# homebrew_casks uses a different install DSL and needs macOS-specific
+# Gatekeeper handling for unsigned binaries that can't be verified from
+# this Linux-only dev environment - left as a follow-up rather than
+# migrating it unverified.
+brews:
+  - name: wgtui
+    repository:
+      owner: DMYTROSKORIN
+      name: homebrew-tap
+    directory: Formula
+    homepage: https://github.com/DMYTROSKORIN/wgtui
+    description: Terminal UI and CLI for managing remote WireGuard servers over SSH
+    license: MIT
+    install: |
+      bin.install "wgtui"
+      man1.install "docs/man/wgtui.1"
+      bash_completion.install "completions/wgtui.bash"
+      zsh_completion.install "completions/_wgtui"
+      fish_completion.install "completions/wgtui.fish"
+    test: |
+      assert_match "wgtui #{version}", shell_output("#{bin}/wgtui version")
+
+release:
+  github:
+    owner: DMYTROSKORIN
+    name: wgtui
+  # spec §28: "update notification without auto-update" - wgtui checks
+  # GitHub Releases itself (internal/update), it never runs its own
+  # auto-updater, so release notes stay purely informational.
+  footer: |
+    ## Verifying this release
+
+    ```
+    gpg --verify checksums.txt.sig checksums.txt
+    sha256sum --ignore-missing -c checksums.txt
+    ```

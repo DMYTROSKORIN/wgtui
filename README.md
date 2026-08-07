@@ -64,6 +64,40 @@ Full analysis: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 go build ./...
 ```
 
+<details>
+<summary>Installing a release (once one exists)</summary>
+
+Every push to `master` is scanned and tested, but no version has been tagged yet - the
+`.deb`/`.rpm`/Homebrew paths below describe what `wgtui vX.Y.Z` will ship once one is
+(`.github/workflows/release.yml`, triggered by a `vX.Y.Z` git tag). Track progress in the
+[Stage 5 issue](https://github.com/DMYTROSKORIN/wgtui/issues/6).
+
+```bash
+# Homebrew (macOS/Linux)
+brew install DMYTROSKORIN/tap/wgtui
+
+# Debian/Ubuntu
+sudo dpkg -i wgtui_*.deb
+
+# Fedora
+sudo rpm -i wgtui_*.rpm
+```
+
+Every release is checksummed (`checksums.txt`) and GPG-signed (`checksums.txt.sig`) - see
+the verification steps in each release's notes. `wgtui version` checks GitHub Releases for
+a newer version and prints a one-line notice if one exists; it never downloads or installs
+anything itself.
+
+Shell completion and a man page ship in every package above, or can be generated directly
+from a `wgtui` binary you've already built:
+
+```bash
+wgtui completion bash > /etc/bash_completion.d/wgtui   # or zsh / fish
+man docs/man/wgtui.1                                     # from a source checkout
+```
+
+</details>
+
 ## Development
 
 Every push is scanned with [Semgrep](https://semgrep.dev) (`p/golang`, `p/security-audit`,
