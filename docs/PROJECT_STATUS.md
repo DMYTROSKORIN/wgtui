@@ -1,8 +1,8 @@
 # Project checkpoint
 
-Last updated: 2026-08-08 00:43 CEST
+Last updated: 2026-08-08 00:49 CEST
 
-Active branch: `feat/tui-usability-overhaul`
+Active branch: `master`
 
 Release target: `v0.2.0`
 
@@ -39,7 +39,8 @@ with `git status --short --branch` and `git log -5 --oneline`.
 - govulncheck `v1.6.0`: 0 called/package vulnerabilities. It reports only the
   unmaintained `x/crypto/openpgp` package at module level; wgtui does not import
   or call it.
-- Semgrep: last clean before this change set; rerun before commit/push.
+- Semgrep: 101 rules on 108 tracked files, 0 findings locally, in the
+  pre-push hook, and in PR CI.
 - Fuzzing: about 305k terminal-text/truncation inputs and 1.25M export-name
   inputs, no failures.
 - Responsive property tests cover every width `64..180` over eight terminal
@@ -49,27 +50,23 @@ with `git status --short --branch` and `git log -5 --oneline`.
   four Linux packages and valid checksums. Archives contain the binary, license,
   README, changelog, man page and three shell completions.
 - actionlint `v1.7.12`: pass for CI and release workflows.
+- PR #7 (`Release v0.2.0: polished responsive TUI`) passed both GitHub CI
+  jobs, including build, vet, unit, race, Staticcheck, govulncheck and Semgrep.
+- PR #7 was merged into `master` as `682924c`.
 
 ## Resume here
 
-1. Run the final clean-tree gate: formatting/diff check, unit tests, race,
-   vet, Staticcheck, govulncheck, Semgrep, actionlint and GoReleaser check.
-2. Commit the product changes and this checkpoint; push the feature branch.
-3. Open a PR to `master`, wait for every CI job and address any failure.
-4. Merge the PR and verify the `master` push CI.
-5. Tag the merge commit `v0.2.0` and push the tag.
-6. Wait for the Release workflow and verify all `.tar.gz`, `.deb`, `.rpm` and
+1. Commit and push this final checkpoint on `master`; verify its CI.
+2. Tag that release commit `v0.2.0` and push the tag.
+3. Wait for the Release workflow and verify all `.tar.gz`, `.deb`, `.rpm` and
    checksum assets plus their embedded `wgtui 0.2.0` version.
-7. Install the published release with `scripts/install.sh v0.2.0`, verify the
+4. Install the published release with `scripts/install.sh v0.2.0`, verify the
    local version, and update this file with the final release result.
 
 ## Publishing note
 
-`git push` works over the configured SSH remote. At this checkpoint,
-`gh auth status` reports that the stored GitHub API token is invalid. Prefer the
-connected GitHub app for PR creation/inspection; if connector coverage is not
-available, re-authentication with `gh auth login -h github.com` is the only
-remaining user-dependent step.
+`git push` works over the configured SSH remote. The connected GitHub app works
+for PR, CI and merge operations even though the local `gh` API token is invalid.
 
 ## Useful commands
 
