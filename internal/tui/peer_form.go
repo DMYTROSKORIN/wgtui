@@ -175,7 +175,7 @@ type peerAddParams struct {
 func (m *model) applyPeerAdd(p peerAddParams) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
 		sess := m.activeSession
-		return func() tea.Msg {
+		return m.releaseTerminalAndRun(func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 			result, err := peerops.AddPeer(ctx, sess.client, sess.prompts, p.cc, p.name, p.serverAllowedIPs, p.keepalive, p.withPSK)
@@ -206,7 +206,7 @@ func (m *model) applyPeerAdd(p peerAddParams) func(*model) tea.Cmd {
 				m.setStatus("Added " + p.name + ". Backup: " + result.Outcome.BackupPath)
 				return nil
 			}}
-		}
+		})
 	}
 }
 

@@ -30,6 +30,7 @@ const (
 	screenServerRemoveConfirm
 	screenServerDetail
 	screenConfirm
+	screenApplying
 	screenConfigureForm
 	screenPeerForm
 	screenPeerReveal

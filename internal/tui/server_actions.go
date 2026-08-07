@@ -66,7 +66,7 @@ func (m *model) applyInstall(plan osadapter.InstallPlan) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
 		sess := m.activeSession
 		s := m.selected
-		return func() tea.Msg {
+		return m.releaseTerminalAndRun(func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 			defer cancel()
 			if err := osadapter.ApplyInstall(ctx, sess.client, sess.prompts, plan); err != nil {
@@ -82,7 +82,7 @@ func (m *model) applyInstall(plan osadapter.InstallPlan) func(*model) tea.Cmd {
 				m.detailErr = ""
 				return m.connectAndDiscoverCmd(s)
 			}}
-		}
+		})
 	}
 }
 
@@ -232,7 +232,7 @@ func (m *model) applyConfigure(iface string, serverAddr netip.Prefix, port int, 
 	return func(m *model) tea.Cmd {
 		sess := m.activeSession
 		s := m.selected
-		return func() tea.Msg {
+		return m.releaseTerminalAndRun(func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 			defer cancel()
 
@@ -303,6 +303,6 @@ func (m *model) applyConfigure(iface string, serverAddr netip.Prefix, port int, 
 				m.detailErr = ""
 				return m.connectAndDiscoverCmd(s)
 			}}
-		}
+		})
 	}
 }

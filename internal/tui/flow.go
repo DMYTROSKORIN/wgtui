@@ -105,6 +105,16 @@ func (m *model) updateConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = m.onCancelled
 			return m, nil
 		}
+		// Must leave screenConfirm *before* running onConfirmed: the form's
+		// State stays StateCompleted forever once set, so if m.screen were
+		// still screenConfirm, literally the next tea.Msg Bubble Tea
+		// delivers (a cursor-blink tick, anything) would route back into
+		// this same case and call onConfirmed a second time - by then
+		// m.activeSession has already been closed and nilled out by
+		// handleActionDone, so the second call panics on a nil session.
+		// Caught for real during manual testing: this crashed the whole
+		// program, not just this screen.
+		m.screen = screenApplying
 		return m, m.onConfirmed(m)
 	case huh.StateAborted:
 		m.activeSession.close()
@@ -116,6 +126,12 @@ func (m *model) updateConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) handleActionDone(msg actionDoneMsg) (tea.Model, tea.Cmd) {
+	// Default back to the screen this flow started from - the same one
+	// onCancelled already points at - so a plain error (no done closure)
+	// or a done closure that doesn't care never leaves the user stuck on
+	// screenApplying. A closure that needs somewhere else (peer add's
+	// reveal screen) sets m.screen itself, after this line runs.
+	m.screen = m.onCancelled
 	if msg.err != nil {
 		m.setError(msg.err)
 	}

@@ -16,6 +16,8 @@ func (m *model) View() string {
 		body = m.viewServerDetail()
 	case screenConfirm:
 		body = m.viewConfirm()
+	case screenApplying:
+		body = m.viewApplying()
 	case screenConfigureForm:
 		body = m.viewConfigureForm()
 	case screenPeerForm:
@@ -160,6 +162,14 @@ func (m *model) viewConfirm() string {
 	}
 	b.WriteString(m.confirmForm.View())
 	return b.String()
+}
+
+// viewApplying is shown for the entire duration of an async apply step -
+// the terminal is released during this window (see releaseTerminalAndRun),
+// so any interactive host-key/password/sudo prompts render directly on
+// top of this text via the real terminal, not through Bubble Tea.
+func (m *model) viewApplying() string {
+	return titleStyle.Render("wgtui") + "\n\n" + textStyle.Render("Applying: "+m.confirmTitle) + "\n" + dimStyle.Render("Working - answer any prompts that appear below.")
 }
 
 func orDefault(s, def string) string {

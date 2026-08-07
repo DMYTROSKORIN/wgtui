@@ -263,7 +263,7 @@ func (m *model) startPeerAction(peer peerview.Peer, action string) tea.Cmd {
 func (m *model) applyDisable(serverID string, meta profilevault.PeerMetadata, cc peerops.CurrentConfig, iface string) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
 		sess := m.activeSession
-		return func() tea.Msg {
+		return m.releaseTerminalAndRun(func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 			outcome, rawBlock, err := peerops.DisablePeer(ctx, sess.client, sess.prompts, cc, meta.PublicKey)
@@ -283,14 +283,14 @@ func (m *model) applyDisable(serverID string, meta profilevault.PeerMetadata, cc
 				m.peersLoaded = false
 				return nil
 			}}
-		}
+		})
 	}
 }
 
 func (m *model) applyEnable(serverID string, meta profilevault.PeerMetadata, cc peerops.CurrentConfig, iface string) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
 		sess := m.activeSession
-		return func() tea.Msg {
+		return m.releaseTerminalAndRun(func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 			outcome, err := peerops.EnablePeer(ctx, sess.client, sess.prompts, cc, meta.DisabledBlockRaw)
@@ -310,7 +310,7 @@ func (m *model) applyEnable(serverID string, meta profilevault.PeerMetadata, cc 
 				m.peersLoaded = false
 				return nil
 			}}
-		}
+		})
 	}
 }
 
@@ -319,7 +319,7 @@ func (m *model) applyRotate(serverID string, meta profilevault.PeerMetadata, cc 
 		sess := m.activeSession
 		oldProfile, hadProfile := m.vault.GetProfile(serverID, meta.PublicKey)
 		host := m.selected.SSHHostOrAlias
-		return func() tea.Msg {
+		return m.releaseTerminalAndRun(func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 			defer cancel()
 			result, err := peerops.RotatePeer(ctx, sess.client, sess.prompts, cc, meta.PublicKey, meta.Name, allowedIPs, keepalive, withPSK)
@@ -348,7 +348,7 @@ func (m *model) applyRotate(serverID string, meta profilevault.PeerMetadata, cc 
 				m.peersLoaded = false
 				return nil
 			}}
-		}
+		})
 	}
 }
 
@@ -399,7 +399,7 @@ func (m *model) applyRevoke(serverID string, meta profilevault.PeerMetadata, ses
 		deleteProfile := m.revokeDeleteProfile
 		deleteMetadata := m.revokeDeleteMetadata
 		revokeAccess := m.revokeYes
-		return func() tea.Msg {
+		return m.releaseTerminalAndRun(func() tea.Msg {
 			var backupPath string
 			if revokeAccess && sess != nil {
 				ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -429,7 +429,7 @@ func (m *model) applyRevoke(serverID string, meta profilevault.PeerMetadata, ses
 				m.peersLoaded = false
 				return nil
 			}}
-		}
+		})
 	}
 }
 
@@ -454,6 +454,11 @@ func (m *model) updateRevokeConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch m.revokeForm.State {
 	case huh.StateCompleted:
+		// See updateConfirm's identical comment: must leave
+		// screenRevokeConfirm before running onConfirmed, or the next
+		// stray tea.Msg re-enters this branch with an already-closed
+		// session and panics.
+		m.screen = screenApplying
 		return m, m.onConfirmed(m)
 	case huh.StateAborted:
 		m.activeSession.close()
