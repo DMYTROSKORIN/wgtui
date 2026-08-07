@@ -39,27 +39,14 @@ archives:
       - docs/man/wgtui.1
       - completions/*
 
+# sha256sum --ignore-missing -c checksums.txt verifies a downloaded
+# archive against this. No GPG signature: this is a private, personal
+# project (not distributed to third parties), so a detached signature
+# defending against a spoofed release would be adding a key to protect
+# against a threat model that doesn't apply here. Revisit if the project
+# is ever made public.
 checksum:
   name_template: "checksums.txt"
-
-# Detached-signs checksums.txt with GPG so `gpg --verify` can confirm a
-# release came from this project (spec §28: "signed releases"). Requires
-# GPG_FINGERPRINT/GPG_PRIVATE_KEY/PASSPHRASE secrets configured in the repo
-# before a real (non-snapshot) release can run - see
-# .github/workflows/release.yml.
-signs:
-  - id: checksum-sig
-    cmd: gpg
-    signature: "${artifact}.sig"
-    args:
-      - "--batch"
-      - "-u"
-      - "{{ .Env.GPG_FINGERPRINT }}"
-      - "--output"
-      - "${signature}"
-      - "--detach-sign"
-      - "${artifact}"
-    artifacts: checksum
 
 nfpms:
   - id: wgtui
@@ -82,35 +69,6 @@ nfpms:
       - src: ./completions/wgtui.fish
         dst: /usr/share/fish/vendor_completions.d/wgtui.fish
 
-# Requires a pre-existing DMYTROSKORIN/homebrew-tap repository and a
-# HOMEBREW_TAP_GITHUB_TOKEN secret with write access to it - see
-# .github/workflows/release.yml.
-#
-# `brews` is soft-deprecated in favor of `homebrew_casks` (goreleaser
-# v2.10+), but still functional (goreleaser.com/deprecations#brews) and
-# was verified end-to-end locally (`goreleaser release --snapshot`).
-# homebrew_casks uses a different install DSL and needs macOS-specific
-# Gatekeeper handling for unsigned binaries that can't be verified from
-# this Linux-only dev environment - left as a follow-up rather than
-# migrating it unverified.
-brews:
-  - name: wgtui
-    repository:
-      owner: DMYTROSKORIN
-      name: homebrew-tap
-    directory: Formula
-    homepage: https://github.com/DMYTROSKORIN/wgtui
-    description: Terminal UI and CLI for managing remote WireGuard servers over SSH
-    license: MIT
-    install: |
-      bin.install "wgtui"
-      man1.install "docs/man/wgtui.1"
-      bash_completion.install "completions/wgtui.bash"
-      zsh_completion.install "completions/_wgtui"
-      fish_completion.install "completions/wgtui.fish"
-    test: |
-      assert_match "wgtui #{version}", shell_output("#{bin}/wgtui version")
-
 release:
   github:
     owner: DMYTROSKORIN
@@ -118,10 +76,3 @@ release:
   # spec §28: "update notification without auto-update" - wgtui checks
   # GitHub Releases itself (internal/update), it never runs its own
   # auto-updater, so release notes stay purely informational.
-  footer: |
-    ## Verifying this release
-
-    ```
-    gpg --verify checksums.txt.sig checksums.txt
-    sha256sum --ignore-missing -c checksums.txt
-    ```

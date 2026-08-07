@@ -38,19 +38,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # Guarded so a release triggered before GPG_PRIVATE_KEY is configured
-      # fails with goreleaser's own clear "no signing key" error from the
-      # step below, rather than this action's less obvious one about an
-      # empty key. Either way it fails closed - no unsigned release is
-      # ever published silently (spec §28: "signed releases").
-      - name: Import GPG key
-        id: gpg
-        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
-        uses: crazy-max/ghaction-import-gpg@v6
-        with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.GPG_PASSPHRASE }}
-
       - name: GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -59,5 +46,3 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
-          GPG_FINGERPRINT: ${{ steps.gpg.outputs.fingerprint }}

@@ -67,14 +67,15 @@ go build ./...
 <details>
 <summary>Installing a release (once one exists)</summary>
 
-Every push to `master` is scanned and tested, but no version has been tagged yet - the
-`.deb`/`.rpm`/Homebrew paths below describe what `wgtui vX.Y.Z` will ship once one is
-(`.github/workflows/release.yml`, triggered by a `vX.Y.Z` git tag). Track progress in the
-[Stage 5 issue](https://github.com/DMYTROSKORIN/wgtui/issues/6).
+This is a private repo for personal use, not distributed to third parties - releases are
+`.deb`/`.rpm`/`.tar.gz` on GitHub Releases only, no Homebrew tap and no GPG signature (see
+`.goreleaser.yaml` for the reasoning). No version has been tagged yet -
+`.github/workflows/release.yml` (triggered by a `vX.Y.Z` git tag) builds these once one is.
+Track progress in the [Stage 5 issue](https://github.com/DMYTROSKORIN/wgtui/issues/6).
 
 ```bash
-# Homebrew (macOS/Linux)
-brew install DMYTROSKORIN/tap/wgtui
+# download from the release (private repo - needs `gh` or an authenticated request)
+gh release download vX.Y.Z --repo DMYTROSKORIN/wgtui
 
 # Debian/Ubuntu
 sudo dpkg -i wgtui_*.deb
@@ -83,10 +84,9 @@ sudo dpkg -i wgtui_*.deb
 sudo rpm -i wgtui_*.rpm
 ```
 
-Every release is checksummed (`checksums.txt`) and GPG-signed (`checksums.txt.sig`) - see
-the verification steps in each release's notes. `wgtui version` checks GitHub Releases for
-a newer version and prints a one-line notice if one exists; it never downloads or installs
-anything itself.
+Every release is checksummed (`checksums.txt`, verify with `sha256sum --ignore-missing -c
+checksums.txt`). `wgtui version` checks GitHub Releases for a newer version and prints a
+one-line notice if one exists; it never downloads or installs anything itself.
 
 Shell completion and a man page ship in every package above, or can be generated directly
 from a `wgtui` binary you've already built:
