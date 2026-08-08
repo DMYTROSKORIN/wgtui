@@ -74,16 +74,11 @@ func (m *model) rebuildPeerTable() {
 	rows := make([]table.Row, 0, len(m.peers))
 	for _, p := range m.peers {
 		name := truncateCell(peerTableLabel(p), cols[0].Width)
-		if p.Managed {
-			name = textStyle.Render(name)
-		} else {
-			name = warningStyle.Render(name)
-		}
 		values := []string{name}
 		if mode != "compact" {
 			values = append(values, orDefault(terminalText(p.VPNIP), "-"))
 		}
-		values = append(values, peerStateBadge(p.State), dimStyle.Render(formatHandshakeAge(p.LatestHandshakeSeconds)))
+		values = append(values, peerStateTableLabel(p.State), formatHandshakeAge(p.LatestHandshakeSeconds))
 		if mode == "extended" {
 			values = append(values, orDefault(terminalText(p.Endpoint), "-"))
 		}
@@ -102,7 +97,10 @@ func (m *model) rebuildPeerTable() {
 
 	styles := table.DefaultStyles()
 	styles.Header = styles.Header.Foreground(colorMuted).Bold(true)
-	styles.Selected = styles.Selected.Bold(true).Background(colorSelection)
+	// Keep Cell free of ANSI foreground styles. Selected wraps the complete
+	// joined row; an inner cell reset would cancel that background after the
+	// first column and recreate the fragmented selection from the report.
+	styles.Selected = styles.Selected.Foreground(colorText).Bold(true).Background(colorSelection)
 
 	tableHeight := min(max(3, len(rows)+1), max(5, m.height-16))
 	if layoutModeFor(m.width, m.height) == layoutWide {
@@ -115,6 +113,31 @@ func (m *model) rebuildPeerTable() {
 		table.WithHeight(tableHeight),
 		table.WithStyles(styles),
 	)
+}
+
+// peerStateTableLabel deliberately returns plain text. Pre-rendered ANSI
+// styles inside table cells reset the parent row background, which made only
+// fragments of the selected row appear highlighted and confused terminal
+// width handling. The inspector keeps the fully colored peerStateBadge.
+func peerStateTableLabel(state string) string {
+	switch state {
+	case "online":
+		return "● online"
+	case "disabled":
+		return "● disabled"
+	case "drifted":
+		return "● drifted"
+	case "error":
+		return "● error"
+	case "never_connected":
+		return "○ never"
+	case "unmanaged":
+		return "○ unmanaged"
+	case "idle":
+		return "○ idle"
+	default:
+		return "○ " + orDefault(terminalText(state), "unknown")
+	}
 }
 
 func peerTableLabel(p peerview.Peer) string {
@@ -172,10 +195,35 @@ func peerSplitPanelWidths(total int) (peers, inspector int) {
 
 func (m *model) viewPeersTab() string {
 	list := m.viewPeerList()
+	if summary := m.viewPeerSummary(); summary != "" {
+		list = summary + "\n" + list
+	}
 	if layoutModeFor(m.width, m.height) == layoutStandard && m.peersLoaded && m.peersErr == "" && len(m.peers) > 0 {
 		list += "\n\n" + m.viewSelectedPeerCard()
 	}
 	return list
+}
+
+func (m *model) viewPeerSummary() string {
+	if !m.peersLoaded || m.peersErr != "" {
+		return ""
+	}
+	online, attention, unmanaged := 0, 0, 0
+	for _, peer := range m.peers {
+		if peer.State == "online" {
+			online++
+		}
+		if peer.State == "disabled" || peer.State == "drifted" || peer.State == "error" || peer.State == "never_connected" {
+			attention++
+		}
+		if !peer.Managed {
+			unmanaged++
+		}
+	}
+	return dimStyle.Render(fmt.Sprintf("%d total", len(m.peers))) + "  " +
+		successStyle.Render(fmt.Sprintf("● %d online", online)) + "  " +
+		warningStyle.Render(fmt.Sprintf("! %d attention", attention)) + "  " +
+		dimStyle.Render(fmt.Sprintf("○ %d unmanaged", unmanaged))
 }
 
 func (m *model) viewPeerList() string {

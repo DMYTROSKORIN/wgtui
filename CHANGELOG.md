@@ -3,6 +3,26 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.2.2] - 2026-08-08
+
+### Changed
+
+- The TUI header shows the running version, making screenshots and reports
+  distinguish an old process from a newly installed binary.
+- The peer dashboard adds a compact semantic summary for total, online,
+  attention and unmanaged peers.
+- Peer selection now uses one uninterrupted full-row highlight while semantic
+  detail colors remain in the inspector.
+
+### Fixed
+
+- Removed nested ANSI styles from peer-table cell values. Those resets could
+  interfere with the table's selected-row background and incremental terminal
+  repaint, producing fragmented highlights and apparently displaced borders.
+- Added an invariant across every wide width from 135 through 260 columns that
+  all four vertical split-panel borders stay at identical positions on every
+  rendered content row.
+
 ## [0.2.1] - 2026-08-08
 
 ### Fixed
@@ -71,6 +91,7 @@ versioning while the project remains below 1.0.
   WireGuard server setup, peer lifecycle, encrypted local storage and release
   packaging.
 
+[0.2.2]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/DMYTROSKORIN/wgtui/releases/tag/v0.1.0

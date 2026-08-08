@@ -1,18 +1,27 @@
 # Project checkpoint
 
-Last updated: 2026-08-08 06:05 CEST
+Last updated: 2026-08-08
 
-Active branch: `master`
+Active branch: `fix/wide-peer-panel-alignment`
 
-Release target: `v0.2.1`
+Release target: `v0.2.2`
 
-Release status: **published and installed**
+Release status: **visual refinement in progress**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Completed in the current release cycle
+
+- Reviewed the new `3063×1335` screenshot and reproduced its effective
+  wide-layout sizes in the text renderer.
+- Removed nested ANSI formatting from peer table cells so the parent table can
+  render one continuous selected-row background and repaint safely.
+- Added a semantic peer summary and the running version to the application
+  header, making both state and screenshot provenance immediately visible.
+- Added a wide-layout invariant that checks fixed positions for all four panel
+  borders at every width `135..260`.
 
 - Fixed stale asynchronous discovery/peer results crossing server or refresh
   boundaries by attaching server and request generation IDs.
@@ -96,11 +105,9 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-Release `v0.2.1` is complete; there is no unfinished implementation or
-publishing step. For new work, start from the latest `origin/master` and create
-a feature branch. Ask the user to reproduce peer loading and the wide layout
-with the installed `wgtui 0.2.1`; any remaining real-server behavior is a new
-scoped diagnostic, not a reason to repeat this release process.
+The `v0.2.2` visual refinement is implemented locally. Continue with the full
+test/static-analysis/package pipeline, publish through PR CI, tag and release,
+install the published artifact, then record the final state here.
 
 ## Publishing note
 

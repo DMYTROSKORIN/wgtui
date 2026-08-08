@@ -18,6 +18,11 @@ const (
 	recommendedHeight     = 24
 )
 
+// Version is replaced by GoReleaser. Keeping the version visible in the TUI
+// makes screenshots actionable: an already-running process is not silently
+// mistaken for the binary that was installed over it.
+var Version = "0.0.0-dev"
+
 type layoutMode uint8
 
 const (
@@ -168,7 +173,7 @@ func (m *model) viewServerDetail() string {
 	header := m.viewServerHeader()
 	if layoutModeFor(m.width, m.height) == layoutWide && m.tab == tabPeers {
 		peersWidth, inspectorWidth := peerSplitPanelWidths(m.width)
-		peers := panelStyle.Width(peersWidth).Height(panelHeight).Render(tabsLine(m.tab) + "\n\n" + m.viewPeerList())
+		peers := panelStyle.Width(peersWidth).Height(panelHeight).Render(tabsLine(m.tab) + "\n" + m.viewPeerSummary() + "\n" + m.viewPeerList())
 		inspector := panelStyle.Width(inspectorWidth).Height(panelHeight).Render(m.viewSelectedPeerInspector())
 		body := lipgloss.JoinHorizontal(lipgloss.Top, peers, " ", inspector)
 		return header + "\n" + body + "\n" + detailFooter(m.tab, m.width)
@@ -196,7 +201,7 @@ func (m *model) viewServerHeader() string {
 	} else if m.detailSession != nil && !m.detailSession.closed {
 		connection = badge(successStyle, "●", "connected")
 	}
-	nameWidth := max(12, m.width-lipgloss.Width(connection)-12)
+	nameWidth := max(12, m.width-lipgloss.Width(appBrand())-lipgloss.Width(connection)-4)
 	return appHeader(truncateCell(m.selected.DisplayName, nameWidth)) + "  " + connection
 }
 
@@ -242,7 +247,12 @@ func detailFooter(tab detailTab, width int) string {
 }
 
 func appHeader(section string) string {
-	return titleStyle.Render("wgtui") + "  " + subtitleStyle.Render(section)
+	return appBrand() + "  " + subtitleStyle.Render(section)
+}
+
+func appBrand() string {
+	version := strings.TrimPrefix(Version, "v")
+	return titleStyle.Render("wgtui") + " " + dimStyle.Render("v"+version)
 }
 
 func keyBar(width int, keys ...string) string {
