@@ -56,6 +56,32 @@ func TestActiveCommanderCategoryOnlyWhenMenuOpen(t *testing.T) {
 	}
 }
 
+// TestAltCategorySwitchesWhileMenuAlreadyOpen guards against a real bug: a
+// second Alt+letter while a different category's dropdown was already open
+// (e.g. from an earlier M press) used to fall through every case in
+// updateCommanderMenu unmatched and do nothing at all - indistinguishable
+// from "the hotkey doesn't respond" to a user pressing Alt+P expecting the
+// Peer menu while Server's dropdown happened to already be open.
+func TestAltCategorySwitchesWhileMenuAlreadyOpen(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+
+	m.Update(key("m")) // opens category 0 (Server)
+	if !m.menuOpen || m.menuCategory != 0 {
+		t.Fatalf("M did not open the Server menu: open=%v category=%d", m.menuOpen, m.menuCategory)
+	}
+
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p"), Alt: true})
+	if !m.menuOpen || m.menuCategory != 1 {
+		t.Fatalf("Alt+P while the Server menu was open did not switch to Peer: open=%v category=%d", m.menuOpen, m.menuCategory)
+	}
+
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h"), Alt: true})
+	if !m.menuOpen || m.menuCategory != 4 {
+		t.Fatalf("Alt+H while the Peer menu was open did not switch to Help: open=%v category=%d", m.menuOpen, m.menuCategory)
+	}
+}
+
 func TestAltPeerOpensMenuIndependentlyOfPlainPasswordAccelerator(t *testing.T) {
 	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})

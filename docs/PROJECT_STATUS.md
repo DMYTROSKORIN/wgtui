@@ -4,18 +4,30 @@ Last updated: 2026-08-09
 
 Active branch: `master`
 
-Release target: `v0.5.1`
+Release target: `v0.5.2`
 
-Release status: **releasing now** - a round of real-world bug reports against
-`v0.5.0` (tab mouse clicks, a diagnose rendering bug, the Peer/Password letter
-collision, sudo/SSH password re-prompting, install/configure being awkwardly
-separate, an unclear wrong-sudo-password state, and undocumented MCP) is fixed,
-tested and merged into `master`; this checkpoint is being written as part of
-tagging and publishing `v0.5.1`
+Release status: **`v0.5.1` published, installed and complete; `v0.5.2` releasing
+now** with one more real bug found while verifying `v0.5.1` itself - Alt+category
+did nothing while a different category's dropdown was already open
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
+
+## Completed in the `v0.5.2` release cycle
+
+- Fixed the real root cause behind "top-menu hotkeys don't respond": with a
+  dropdown already open (from an earlier `M` press or `Alt+S`), pressing a
+  *different* category's `Alt+letter` fell through every case in
+  `updateCommanderMenu` and did nothing - not a terminal/environment issue,
+  a genuine gap in that function. `internal/tui/commander.go`'s
+  `updateCommanderMenu` now checks `alt+<category key>` first and switches
+  categories directly, matching what `handleCommanderAccelerator` already
+  does from the closed state. Regression test:
+  `TestAltCategorySwitchesWhileMenuAlreadyOpen`
+  (`internal/tui/menu_redesign_test.go`).
+- `gofmt`, `go build`, `go vet`, `staticcheck`, `go test ./...`,
+  `go test -race ./...` pass on the changed tree.
 
 ## Completed in the `v0.5.1` release cycle
 
@@ -67,6 +79,25 @@ with `git status --short --branch` and `git log -5 --oneline`.
   VM: bottom bar shows `W` highlighted inside "Password" with correct ANSI: the
   diagnose selected-row fix, no repeated SSH/sudo prompts across a Refresh, and the
   Overview/Diagnose screens render correctly end to end.
+- Pushed `master` directly (commit `ec87360`); the pre-push Semgrep gate (101 rules,
+  114 files) was clean.
+- Annotated tag `v0.5.1` points at `ec87360` and is pushed to origin. Release workflow
+  run `31283108813` passed all three jobs (`semgrep`, `validate`, `goreleaser`).
+- GitHub Release `v0.5.1` is published (not draft/prerelease) with `checksums.txt`,
+  four Linux/macOS archives, two `.deb` files and two `.rpm` files.
+- `scripts/install.sh v0.5.1` verified the published Linux amd64 archive and
+  installed `wgtui 0.5.1` at `~/.local/bin/wgtui`.
+- Installed `v0.5.1` binary SHA-256:
+  `7e181ea2e06cf6b88c516a015e0af9f9ca8d9d6b42f379dcb48a4628d02dd074`.
+- **Found one more real bug while verifying `v0.5.1`'s own fixes**: with a
+  top-menu dropdown already open (e.g. from an earlier `M` press or `Alt+S`),
+  pressing a *different* category's `Alt+letter` fell through every case in
+  `updateCommanderMenu` unmatched and did nothing - indistinguishable from "the
+  hotkey doesn't respond", which is almost certainly what was originally
+  reported. Fixed in `internal/tui/commander.go`'s `updateCommanderMenu` (checks
+  `alt+<category key>` before anything else) with a regression test,
+  `TestAltCategorySwitchesWhileMenuAlreadyOpen`. This fix was not yet in `v0.5.1`
+  when it was tagged; see the `v0.5.2` cycle below.
 
 ## Completed in the `v0.5.0` release cycle
 

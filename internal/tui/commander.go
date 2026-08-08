@@ -89,6 +89,18 @@ func (m *model) openCommanderMenu() {
 }
 
 func (m *model) updateCommanderMenu(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Alt+category must jump directly to that category even while a
+	// different one is already open - not just from the closed state
+	// handleCommanderAccelerator covers. Without this, Alt+P while the
+	// Server dropdown was open from an earlier M/Alt+S did nothing at all
+	// (the keypress fell through every case below unmatched), which reads
+	// exactly like "the hotkey doesn't respond".
+	for i, category := range commanderCategories {
+		if key.String() == "alt+"+strings.ToLower(category.key) {
+			m.menuCategory, m.menuCursor = i, 0
+			return m, nil
+		}
+	}
 	items := m.commanderMenuItems(m.menuCategory)
 	for i, item := range items {
 		if strings.EqualFold(key.String(), item.key) {

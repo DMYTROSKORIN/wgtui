@@ -3,6 +3,17 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.5.2] - 2026-08-09
+
+### Fixed
+
+- Found while verifying `v0.5.1`'s own fixes: with a top-menu dropdown already
+  open (e.g. from an earlier `M` press or `Alt+S`), pressing a *different*
+  category's `Alt+letter` did nothing at all - not a terminal quirk, a real
+  gap where that keypress fell through every case unmatched. This is almost
+  certainly what "the top-menu hotkeys don't respond" actually was. `Alt+letter`
+  now switches categories directly even while a dropdown is already open.
+
 ## [0.5.1] - 2026-08-09
 
 ### Fixed
