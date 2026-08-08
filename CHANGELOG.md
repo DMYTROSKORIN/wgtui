@@ -3,6 +3,23 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [Unreleased]
+
+### Added
+
+- Mouse-clickable top categories, dropdown actions and segmented bottom actions.
+- Branded in-app forms for local master-password unlock, SSH host-key trust,
+  SSH login passwords and remote sudo passwords.
+- Highlighted letter accelerators throughout the menu and action bar, following
+  btop's discoverable shortcut convention.
+
+### Changed
+
+- Replaced the visually continuous F1-F10 strip with sharply separated,
+  contextual letter actions.
+- Remote work no longer releases Bubble Tea's alternate screen to read a
+  password from the plain terminal.
+
 ## [0.3.0] - 2026-08-08
 
 ### Added

@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -36,6 +35,7 @@ const (
 )
 
 type commanderMenuItem struct {
+	key         string
 	label       string
 	description string
 	action      commanderAction
@@ -66,10 +66,23 @@ func (m *model) openCommanderMenu() {
 
 func (m *model) updateCommanderMenu(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	items := m.commanderMenuItems(m.menuCategory)
+	for i, item := range items {
+		if strings.EqualFold(key.String(), item.key) {
+			m.menuCursor = i
+			if !item.enabled {
+				return m, nil
+			}
+			m.menuOpen = false
+			return m, m.dispatchCommanderAction(item.action)
+		}
+	}
 	switch key.String() {
-	case "esc", "q", "f9":
+	case "esc", "m", "f9":
 		m.menuOpen = false
 		return m, nil
+	case "q":
+		m.menuOpen = false
+		return m, m.dispatchCommanderAction(actionQuit)
 	case "left", "h":
 		m.menuCategory = (m.menuCategory + len(commanderCategories) - 1) % len(commanderCategories)
 		m.menuCursor = 0
@@ -103,7 +116,9 @@ func (m *model) commanderMenuItems(category int) []commanderMenuItem {
 	servers := m.vault.Registry.Servers
 	hasServer := m.screen == screenServerList && len(servers) > 0 && m.cursor >= 0 && m.cursor < len(servers)
 	onDetail := m.screen == screenServerDetail
-	detailReady := onDetail && !m.loading
+	detailReady := onDetail && !m.loading && m.detailErr == ""
+	wgPresent := detailReady && m.report.WireGuard.WgPresent
+	interfaceReady := wgPresent && len(m.report.WireGuard.Interfaces) > 0
 	hasPeer := onDetail && m.tab == tabPeers && m.peersLoaded && m.peersErr == "" && len(m.peers) > 0
 	managedPeer := false
 	if hasPeer {
@@ -111,48 +126,51 @@ func (m *model) commanderMenuItems(category int) []commanderMenuItem {
 		managedPeer = row >= 0 && row < len(m.peers) && m.peers[row].Managed
 	}
 
-	enabled := func(label, description string, action commanderAction, ok bool, reason string) commanderMenuItem {
-		return commanderMenuItem{label: label, description: description, action: action, enabled: ok, reason: reason}
+	enabled := func(key, label, description string, action commanderAction, ok bool, reason string) commanderMenuItem {
+		return commanderMenuItem{key: key, label: label, description: description, action: action, enabled: ok, reason: reason}
 	}
 	switch category {
 	case 0:
 		return []commanderMenuItem{
-			enabled("Open selected server", "Connect and open the selected server dashboard.", actionOpenServer, hasServer, "Select a registered server first."),
-			enabled("New server…", "Register another SSH target in the encrypted local vault.", actionNewServer, true, ""),
-			enabled("Edit selected server…", "Change the selected server's display name or SSH settings.", actionEditServer, hasServer, "Available from the server list."),
-			enabled("Remove selected server…", "Remove the registration after an explicit confirmation.", actionRemoveServer, hasServer, "Available from the server list."),
-			enabled("Install WireGuard…", "Build and confirm an installation plan for this server.", actionInstallWG, detailReady, "Open a connected server first."),
-			enabled("Configure server…", "Build and confirm the WireGuard server configuration.", actionConfigureServer, detailReady, "Open a connected server first."),
-			enabled("Refresh server", "Reconnect and refresh the current server state.", actionRefresh, onDetail, "Open a server first."),
+			enabled("O", "Open selected server", "Connect and open the selected server dashboard.", actionOpenServer, hasServer, "Select a registered server first."),
+			enabled("N", "New server…", "Register another SSH target in the encrypted local vault.", actionNewServer, true, ""),
+			enabled("E", "Edit selected server…", "Change the selected server's display name or SSH settings.", actionEditServer, hasServer, "Available from the server list."),
+			enabled("X", "Remove selected server…", "Remove the registration after an explicit confirmation.", actionRemoveServer, hasServer, "Available from the server list."),
+			enabled("I", "Install WireGuard…", "Build and confirm an installation plan for this server.", actionInstallWG, detailReady && !wgPresent, "Available when the connected server does not have WireGuard."),
+			enabled("C", "Configure server…", "Build and confirm the WireGuard server configuration.", actionConfigureServer, wgPresent, "Connect to a server with WireGuard installed first."),
+			enabled("R", "Refresh server", "Reconnect and refresh the current server state.", actionRefresh, onDetail, "Open a server first."),
 		}
 	case 1:
 		return []commanderMenuItem{
-			enabled("New peer…", "Create a peer and continue to QR/export setup.", actionNewPeer, detailReady, "Open a connected server first."),
-			enabled("Selected peer actions…", "Open all actions available for the selected peer.", actionPeerActions, hasPeer, "Open Peers and select a peer first."),
-			enabled("Revoke selected peer…", "Open the revoke action; a confirmation is still required.", actionPeerRevoke, managedPeer, "Select a peer managed by wgtui first."),
-			enabled("Refresh peers", "Open Peers and reload runtime peer state from the server.", actionRefreshPeers, onDetail, "Open a server first."),
+			enabled("N", "New peer…", "Create a peer and continue to QR/export setup.", actionNewPeer, interfaceReady, "Configure a WireGuard interface first."),
+			enabled("A", "Selected peer actions…", "Open all actions available for the selected peer.", actionPeerActions, hasPeer, "Open Peers and select a peer first."),
+			enabled("X", "Revoke selected peer…", "Open the revoke action; a confirmation is still required.", actionPeerRevoke, managedPeer, "Select a peer managed by wgtui first."),
+			enabled("R", "Refresh peers", "Open Peers and reload runtime peer state from the server.", actionRefreshPeers, onDetail, "Open a server first."),
 		}
 	case 2:
 		return []commanderMenuItem{
-			enabled("Overview", "Show installation, interface and network readiness.", actionShowOverview, onDetail, "Open a server first."),
-			enabled("Peers", "Show the peer table and selected-peer inspector.", actionShowPeers, onDetail, "Open a server first."),
-			enabled("Diagnose", "Show checks, warnings and remediation context.", actionShowDiagnose, onDetail, "Open a server first."),
-			enabled("Refresh current view", "Refresh the data used by the active view.", actionRefresh, onDetail, "Open a server first."),
-			enabled("Server list", "Close the server session and return to registered servers.", actionShowServerList, onDetail, "Already at the server list."),
+			enabled("O", "Overview", "Show installation, interface and network readiness.", actionShowOverview, onDetail, "Open a server first."),
+			enabled("P", "Peers", "Show the peer table and selected-peer inspector.", actionShowPeers, onDetail, "Open a server first."),
+			enabled("D", "Diagnose", "Show checks, warnings and remediation context.", actionShowDiagnose, onDetail, "Open a server first."),
+			enabled("R", "Refresh current view", "Refresh the data used by the active view.", actionRefresh, onDetail, "Open a server first."),
+			enabled("B", "Server list", "Close the server session and return to registered servers.", actionShowServerList, onDetail, "Already at the server list."),
 		}
 	case 3:
 		return []commanderMenuItem{
-			enabled("Change vault password…", "Re-encrypt local server and peer metadata with a new master password.", actionChangePassword, m.screen == screenServerList, "Return to the server list first."),
+			enabled("P", "Change vault password…", "Re-encrypt local server and peer metadata with a new master password.", actionChangePassword, m.screen == screenServerList, "Return to the server list first."),
 		}
 	default:
 		return []commanderMenuItem{
-			enabled("Keyboard help", "Show navigation, action and safety shortcuts.", actionHelp, true, ""),
-			enabled("Quit wgtui", "Close SSH sessions, restore the terminal and quit safely.", actionQuit, true, ""),
+			enabled("H", "Keyboard help", "Show navigation, action and safety shortcuts.", actionHelp, true, ""),
+			enabled("Q", "Quit wgtui", "Close SSH sessions, restore the terminal and quit safely.", actionQuit, true, ""),
 		}
 	}
 }
 
 func (m *model) dispatchCommanderAction(action commanderAction) tea.Cmd {
+	if action != actionQuit && action != actionHelp && !m.commanderActionEnabled(action) {
+		return nil
+	}
 	switch action {
 	case actionOpenServer:
 		_, cmd := m.updateServerList(commanderKey("enter"))
@@ -232,6 +250,17 @@ func (m *model) dispatchCommanderAction(action commanderAction) tea.Cmd {
 		return tea.Quit
 	}
 	return nil
+}
+
+func (m *model) commanderActionEnabled(action commanderAction) bool {
+	for category := range commanderCategories {
+		for _, item := range m.commanderMenuItems(category) {
+			if item.action == action && item.enabled {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func commanderKey(value string) tea.KeyMsg {
@@ -320,18 +349,77 @@ func (m *model) handleCommanderFunctionKey(value string) (tea.Cmd, bool) {
 	return nil, strings.HasPrefix(value, "f")
 }
 
-func (m *model) viewCommanderMenuBar() string {
-	parts := make([]string, 0, len(commanderCategories))
-	for i, category := range commanderCategories {
-		style := lipgloss.NewStyle().Foreground(colorText).Padding(0, 1)
-		if m.menuOpen && i == m.menuCategory {
-			style = style.Bold(true).Background(colorSelection)
-		} else if (!m.menuOpen && i == 0 && m.screen == screenServerList) || (!m.menuOpen && i == 1 && m.screen == screenServerDetail && m.tab == tabPeers) || (!m.menuOpen && i == 2 && m.screen == screenServerDetail && m.tab != tabPeers) {
-			style = style.Foreground(colorAccent).Underline(true)
-		}
-		parts = append(parts, style.Render(category))
+func (m *model) handleCommanderAccelerator(value string) (tea.Cmd, bool) {
+	if !m.commanderAvailable() {
+		return nil, false
 	}
-	return ansi.Truncate(strings.Join(parts, ""), max(0, m.width), "")
+	for i, key := range []string{"alt+s", "alt+p", "alt+v", "alt+t", "alt+h"} {
+		if value == key {
+			m.menuOpen, m.menuCategory, m.menuCursor = true, i, 0
+			return nil, true
+		}
+	}
+	switch value {
+	case "q":
+		return m.dispatchCommanderAction(actionQuit), true
+	case "?":
+		return m.dispatchCommanderAction(actionHelp), true
+	}
+	if m.screen == screenServerList {
+		switch value {
+		case "n":
+			return m.dispatchCommanderAction(actionNewServer), true
+		case "o":
+			return m.dispatchCommanderAction(actionOpenServer), true
+		case "e":
+			return m.dispatchCommanderAction(actionEditServer), true
+		case "x":
+			return m.dispatchCommanderAction(actionRemoveServer), true
+		case "p":
+			return m.dispatchCommanderAction(actionChangePassword), true
+		}
+	}
+	if m.screen == screenServerDetail {
+		switch value {
+		case "i":
+			return m.dispatchCommanderAction(actionInstallWG), true
+		case "n":
+			return m.dispatchCommanderAction(actionNewPeer), true
+		case "r":
+			return m.dispatchCommanderAction(actionRefresh), true
+		case "c":
+			return m.dispatchCommanderAction(actionConfigureServer), true
+		case "d":
+			return m.dispatchCommanderAction(actionShowDiagnose), true
+		case "b":
+			return m.dispatchCommanderAction(actionShowServerList), true
+		case "a":
+			if m.tab == tabPeers {
+				return m.dispatchCommanderAction(actionPeerActions), true
+			}
+		case "x":
+			if m.tab == tabPeers {
+				return m.dispatchCommanderAction(actionPeerRevoke), true
+			}
+		}
+	}
+	return nil, false
+}
+
+func (m *model) viewCommanderMenuBar() string {
+	parts := make([]string, 0, len(commanderCategories)*2)
+	for i, category := range commanderCategories {
+		active := (m.menuOpen && i == m.menuCategory) ||
+			(!m.menuOpen && i == 0 && m.screen == screenServerList) ||
+			(!m.menuOpen && i == 1 && m.screen == screenServerDetail && m.tab == tabPeers) ||
+			(!m.menuOpen && i == 2 && m.screen == screenServerDetail && m.tab != tabPeers)
+		parts = append(parts, renderChromeAccelerator(strings.ToUpper(category[:1]), category, active))
+		if i < len(commanderCategories)-1 {
+			parts = append(parts, chromeStyle.Render("│"))
+		}
+	}
+	bar := strings.Join(parts, "")
+	return chromeStyle.Width(max(0, m.width)).Render(ansi.Truncate(bar, max(0, m.width), ""))
 }
 
 func (m *model) viewCommanderMenu() string {
@@ -340,85 +428,126 @@ func (m *model) viewCommanderMenu() string {
 		return ""
 	}
 	cursor := clamp(m.menuCursor, 0, len(items)-1)
-	leftWidth := clamp(m.width/3, 28, 42)
-	rightWidth := max(30, m.width-leftWidth-5)
-	height := m.dashboardPanelHeight()
+	menuWidth := clamp(m.width/2, 38, 72)
 	var list strings.Builder
-	list.WriteString(titleStyle.Render(commanderCategories[m.menuCategory]) + "\n\n")
 	for i, item := range items {
-		label := item.label
-		if !item.enabled {
-			label = "○ " + label
-		} else {
-			label = "  " + label
-		}
-		label = truncateCell(label, max(8, leftWidth-4))
-		switch {
-		case i == cursor && item.enabled:
-			list.WriteString(menuSelectedStyle.Render(label))
-		case i == cursor:
-			list.WriteString(lipgloss.NewStyle().Background(colorSelection).Foreground(colorMuted).Render(label))
-		case !item.enabled:
-			list.WriteString(dimStyle.Render(label))
-		default:
-			list.WriteString(textStyle.Render(label))
-		}
+		list.WriteString(renderCommanderMenuItem(item, i == cursor, menuWidth-4))
 		list.WriteByte('\n')
 	}
 
 	selected := items[cursor]
-	detail := accentHeadingStyle.Render(selected.label) + "\n\n" +
-		wrapPlainText(selected.description, max(20, rightWidth-4), 6) + "\n\n"
+	detail := "\n" + dimStyle.Render(strings.Repeat("─", max(8, menuWidth-4))) + "\n" +
+		wrapPlainText(selected.description, max(20, menuWidth-4), 4) + "\n"
 	if selected.enabled {
-		detail += successStyle.Render("Available") + "\n\n" + dimStyle.Render("Enter runs this action · Esc returns")
+		detail += dimStyle.Render("Enter/click runs · Esc closes")
 	} else {
-		detail += warningStyle.Render("Unavailable in the current context") + "\n" +
-			wrapPlainText(selected.reason, max(20, rightWidth-4), 4)
+		detail += warningStyle.Render("Unavailable: ") + wrapPlainText(selected.reason, max(20, menuWidth-17), 3)
 	}
-	left := panelStyle.Width(leftWidth).Height(height).Render(list.String())
-	right := panelStyle.Width(rightWidth).Height(height).Render(detail)
-	return appHeader("Command menu") + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right) + "\n" + m.commanderFunctionBar()
+	panel := panelStyle.Width(menuWidth).Render(strings.TrimSuffix(list.String(), "\n") + detail)
+	offset := commanderCategoryStart(m.menuCategory)
+	panel = strings.Repeat(" ", offset) + panel
+	panelLines := strings.Count(panel, "\n") + 1
+	blank := max(0, m.height-2-panelLines)
+	return panel + strings.Repeat("\n", blank+1) + m.commanderActionBar()
 }
 
-func (m *model) commanderFunctionBar() string {
-	labels := m.commanderFunctionLabels()
+func renderCommanderMenuItem(item commanderMenuItem, selected bool, width int) string {
+	background := colorChromeKey
+	foreground := colorText
+	keyForeground := colorWarning
+	if selected {
+		background = colorChromeAlt
+		foreground = colorChromeInk
+	} else if item.enabled {
+		keyForeground = colorChromeInk
+	}
+	if !item.enabled {
+		foreground, keyForeground = colorMuted, colorMuted
+		if selected {
+			background = colorChromeKey
+		}
+	}
+	base := lipgloss.NewStyle().Foreground(foreground).Background(background)
+	keyStyle := lipgloss.NewStyle().Bold(true).Underline(true).Foreground(keyForeground).Background(background)
+	labelWidth := max(0, width-2)
+	return base.Render(" ") + keyStyle.Render(item.key) +
+		base.Width(labelWidth).Render(truncateCell("  "+item.label, labelWidth))
+}
+
+type commanderHint struct {
+	key     string
+	label   string
+	action  commanderAction
+	enabled bool
+}
+
+func (m *model) commanderActionBar() string {
+	hints := m.commanderActionHints()
 	if m.width <= 0 {
 		return ""
 	}
-	base, remainder := m.width/10, m.width%10
+	base, remainder := m.width/len(hints), m.width%len(hints)
 	var b strings.Builder
-	for i, label := range labels {
+	for i, hint := range hints {
 		width := base
 		if i < remainder {
 			width++
 		}
-		keyLabel := fmt.Sprintf("F%d", i+1)
-		keyWidth := min(width, lipgloss.Width(keyLabel))
-		keyText := ansi.Truncate(keyLabel, keyWidth, "")
-		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(colorText).Background(colorAccent).Width(keyWidth).Render(keyText))
-		labelWidth := max(0, width-keyWidth)
-		b.WriteString(lipgloss.NewStyle().Foreground(colorText).Background(colorSelection).Width(labelWidth).Render(truncateCell(label, labelWidth)))
+		keyWidth := min(width, lipgloss.Width(hint.key)+1)
+		keyStyle, labelStyle := chromeKeyStyle, chromeLabelStyle
+		if !hint.enabled {
+			keyStyle = keyStyle.Foreground(colorMuted)
+			labelStyle = labelStyle.Foreground(colorMuted)
+		}
+		b.WriteString(keyStyle.Width(keyWidth).Render(" " + hint.key))
+		labelWidth := max(0, width-keyWidth-1)
+		b.WriteString(labelStyle.Width(labelWidth).Render(truncateCell(hint.label, labelWidth)))
+		b.WriteString(lipgloss.NewStyle().Background(colorChromeKey).Width(min(1, width-keyWidth-labelWidth)).Render(" "))
 	}
 	return b.String()
 }
 
-func (m *model) commanderFunctionLabels() [10]string {
-	labels := [10]string{"Help", "New", "Open", "Edit", "Refresh", "Config", "Diagnose", "Remove", "Menu", "Quit"}
+func (m *model) commanderActionHints() []commanderHint {
 	if m.menuOpen {
-		return [10]string{"Help", "", "Select", "", "", "", "", "", "Close", "Quit"}
+		return []commanderHint{{"↑↓", "Select", "", true}, {"↵", "Run", "", true}, {"M", "Close", "", true}, {"Q", "Quit", actionQuit, true}}
 	}
+	hints := []commanderHint{{"?", "Help", actionHelp, true}}
 	if m.screen == screenServerDetail {
-		labels[2] = ""
-		labels[3] = ""
-		labels[7] = ""
+		peerReady := !m.loading && m.detailErr == "" && m.report.WireGuard.WgPresent && len(m.report.WireGuard.Interfaces) > 0
+		hints = append(hints, commanderHint{"N", "New peer", actionNewPeer, peerReady})
 		if m.tab == tabPeers {
-			labels[2] = "Actions"
-			labels[7] = "Revoke"
+			hints = append(hints, commanderHint{"A", "Actions", actionPeerActions, len(m.peers) > 0}, commanderHint{"X", "Revoke", actionPeerRevoke, len(m.peers) > 0})
 		}
+		hints = append(hints, commanderHint{"R", "Refresh", actionRefresh, true})
+		if m.tab == tabOverview && !m.report.WireGuard.WgPresent {
+			hints = append(hints, commanderHint{"I", "Install", actionInstallWG, !m.loading && m.detailErr == ""})
+		}
+		hints = append(hints, commanderHint{"C", "Configure", actionConfigureServer, !m.loading && m.detailErr == "" && m.report.WireGuard.WgPresent}, commanderHint{"D", "Diagnose", actionShowDiagnose, true}, commanderHint{"B", "Back", actionShowServerList, true})
 	} else if m.screen == screenServerList {
-		labels[4] = ""
-		labels[5] = ""
-		labels[6] = ""
+		hasServer := len(m.vault.Registry.Servers) > 0
+		hints = append(hints, commanderHint{"N", "New", actionNewServer, true}, commanderHint{"O", "Open", actionOpenServer, hasServer}, commanderHint{"E", "Edit", actionEditServer, hasServer}, commanderHint{"X", "Remove", actionRemoveServer, hasServer}, commanderHint{"P", "Password", actionChangePassword, true})
 	}
-	return labels
+	return append(hints, commanderHint{"M", "Menu", "", true}, commanderHint{"Q", "Quit", actionQuit, true})
+}
+
+func renderChromeAccelerator(key, label string, active bool) string {
+	background := colorChrome
+	if active {
+		background = colorChromeKey
+	}
+	keyStyle := lipgloss.NewStyle().Bold(true).Underline(true).Foreground(colorWarning).Background(background)
+	labelStyle := lipgloss.NewStyle().Foreground(colorChromeInk).Background(background)
+	rest := strings.TrimPrefix(label, strings.ToUpper(key))
+	if rest == label && len(label) > 0 {
+		rest = label[1:]
+	}
+	return labelStyle.Render(" ") + keyStyle.Render(key) + labelStyle.Render(rest+" ")
+}
+
+func commanderCategoryStart(category int) int {
+	start := 0
+	for i := 0; i < category && i < len(commanderCategories); i++ {
+		start += len(commanderCategories[i]) + 3
+	}
+	return start
 }

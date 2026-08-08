@@ -20,6 +20,10 @@ var (
 	colorSelection = lipgloss.AdaptiveColor{Light: "#EDE9FE", Dark: "#312E81"}
 	colorText      = lipgloss.AdaptiveColor{Light: "#111827", Dark: "#E5E7EB"}
 	colorMuted     = lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}
+	colorChrome    = lipgloss.AdaptiveColor{Light: "#0891B2", Dark: "#0891B2"}
+	colorChromeAlt = lipgloss.AdaptiveColor{Light: "#0E7490", Dark: "#0E7490"}
+	colorChromeKey = lipgloss.AdaptiveColor{Light: "#111827", Dark: "#111827"}
+	colorChromeInk = lipgloss.AdaptiveColor{Light: "#F8FAFC", Dark: "#F8FAFC"}
 )
 
 var (
@@ -44,8 +48,11 @@ var (
 	tabActiveStyle   = lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Underline(true)
 	tabInactiveStyle = lipgloss.NewStyle().Foreground(colorMuted)
 
-	footerStyle = lipgloss.NewStyle().Foreground(colorMuted)
-	keyStyle    = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	footerStyle      = lipgloss.NewStyle().Foreground(colorMuted)
+	keyStyle         = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	chromeStyle      = lipgloss.NewStyle().Bold(true).Foreground(colorChromeInk).Background(colorChrome)
+	chromeKeyStyle   = lipgloss.NewStyle().Bold(true).Foreground(colorChromeInk).Background(colorChromeKey)
+	chromeLabelStyle = lipgloss.NewStyle().Foreground(colorChromeInk).Background(colorChromeAlt)
 )
 
 // formTheme is the one huh.Theme every form/confirm/select in the app

@@ -1,18 +1,41 @@
 # Project checkpoint
 
-Last updated: 2026-08-08 12:37 CEST
+Last updated: 2026-08-08 18:44 CEST
 
-Active branch: `feat/commander-ui-v0.3.0`
+Active branch: `feat/mouse-credential-ui-v0.4.0`
 
-Release target: `v0.3.0`
+Release target: `v0.4.0`
 
-Release status: **v0.3.0 released and installed**
+Release status: **implementation and local release matrix complete; publishing
+in progress**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Completed in the current release cycle
+
+- Reviewed `Screenshot_20260808_180214.png` and the matching Midnight
+  Commander screenshot. Confirmed that the top and bottom chrome needed solid
+  contrast, explicit separators, a compact dropdown and real mouse hit areas.
+- Replaced the visible F-key strip with contextual btop-style highlighted
+  letter accelerators. F-keys remain undocumented compatibility aliases only.
+- Enabled Bubble Tea cell-motion mouse support and added click dispatch for top
+  categories, dropdown items and bottom actions; disabled actions remain safe.
+- Moved initial vault create/unlock into a branded in-app password form.
+- Replaced terminal release/read-password flows with in-app SSH host-key, SSH
+  password and sudo password modals. Secrets are cleared from model fields and
+  cached only inside the active remote session.
+- Added access, credential, mouse, disabled-click, exact-width and minimum-size
+  regressions.
+- Anchored the final action row to the terminal's physical bottom row. Status
+  banners no longer shift the visible bar away from its mouse hit area.
+- Letter accelerators now honor the same readiness rules as disabled menu and
+  mouse actions; they cannot bypass missing WireGuard/interface prerequisites.
+- Verified the disposable VM `192.168.122.245` is Ubuntu 24.04 with systemd
+  and no `wg` binary. The new read-only manual integration test passed full
+  discovery, sudo validation, missing-WireGuard classification, diagnostics,
+  distro detection and install-plan generation without mutating the server.
 
 - Published and locally installed `v0.2.2`; the release contains Darwin and
   Linux archives for amd64/arm64 plus Linux `.deb`/`.rpm` packages.
@@ -21,12 +44,13 @@ with `git status --short --branch` and `git log -5 --oneline`.
 - User approved a pure-Go Commander UI direction inspired by Midnight
   Commander; S-Lang/CGO migration is explicitly out of scope to preserve macOS
   compatibility and the tested Go business layer.
-- Added `docs/COMMANDER_UI.md` as the menu, F-key, two-pane and cross-platform
+- Added `docs/COMMANDER_UI.md` as the menu, action-bar, two-pane and cross-platform
   behavior contract for `v0.3.0`.
 - Implemented the persistent Server/Peer/View/Tools/Help menu with disabled
-  reasons, F9 navigation and safe action dispatch through existing workflows.
-- Implemented a contextual ten-slot F1-F10 bar whose rendered width is exact at
-  every supported width from 64 through 300 columns.
+  reasons, mouse/letter navigation and safe dispatch through existing workflows.
+- The former F-key strip was superseded in `v0.4.0` by a contextual segmented
+  letter-action bar whose rendered width is exact at every supported width from
+  64 through 300 columns.
 - Overview, Peers and Diagnose now retain stable collection/detail panes in
   wide mode; compact peer actions fit the supported `64×18` minimum.
 - CI and release validation now cross-build both Darwin architectures with
@@ -80,6 +104,23 @@ with `git status --short --branch` and `git log -5 --oneline`.
 - Updated README, TUI and architecture documentation for the new contract.
 
 ## Test and packaging evidence
+
+### Current `v0.4.0` branch
+
+- `go test ./...`, `go test -race ./...`, `go vet ./...` and Staticcheck
+  `v0.7.0`: pass.
+- govulncheck `v1.6.0`: 0 called vulnerabilities and 0 vulnerabilities in
+  imported packages.
+- Semgrep: 101 rules on 112 repository files, 0 findings; a second explicit
+  scan covered the four new security-relevant untracked Go files with 0
+  findings.
+- Darwin amd64 and arm64 `CGO_ENABLED=0` builds: valid Mach-O executables.
+- Two 10-second fuzz runs: about 1.27M terminal-safety executions and 1.51M
+  export-path executions, no failures.
+- GoReleaser configuration check and clean snapshot: pass; Linux/macOS
+  amd64/arm64 archives plus Linux deb/rpm packages and checksums produced.
+- Read-only missing-WireGuard Ubuntu 24.04 VM integration: pass; no remote
+  mutation was applied.
 
 - `go test ./...`: pass.
 - `go test -race ./...`: pass.
@@ -136,10 +177,13 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-Release `v0.3.0` is complete. Resume from `master` only for a new user-requested
-change; do not repeat the Commander UI release cycle. First confirm the running
-process was restarted if a screenshot still shows an older version in its
-header.
+Continue `v0.4.0` from `feat/mouse-credential-ui-v0.4.0`. The implementation and
+full local release matrix are complete. GitHub CLI and SSH authentication are
+verified; `origin` uses SSH and this repository bypasses the broken system SSH
+include with repository-local `ssh -F /dev/null`. Commit/push, open the draft
+PR, run PR CI, merge, tag/release `v0.4.0`, and install/verify it locally. Do not
+repeat the already passed read-only missing-WireGuard VM test unless connection
+behavior changes.
 
 ## Publishing note
 

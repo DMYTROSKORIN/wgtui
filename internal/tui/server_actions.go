@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -20,11 +19,10 @@ import (
 // distro, and build a plan before asking to apply it.
 func (m *model) startInstallWizard() tea.Cmd {
 	s := m.selected
-	return m.releaseTerminalAndRun(func() tea.Msg {
+	return m.runAsync(func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
-		target := connectingBanner(os.Stdout, s)
-		prompts := newTerminalPrompts(os.Stdout, target)
+		prompts := newTUIPrompts(m.program, serverLabel(s))
 		sess, err := dial(ctx, s, prompts)
 		if err != nil {
 			return planReadyMsg{err: fmt.Errorf("connect: %w", err), cancelScreen: screenServerDetail}
@@ -67,7 +65,7 @@ func (m *model) applyInstall(plan osadapter.InstallPlan) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
 		sess := m.activeSession
 		s := m.selected
-		return m.releaseTerminalAndRun(func() tea.Msg {
+		return m.runAsync(func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 			defer cancel()
 			if err := osadapter.ApplyInstall(ctx, sess.client, sess.prompts, plan); err != nil {
@@ -101,11 +99,10 @@ type configurePrepMsg struct {
 
 func (m *model) startConfigurePrep() tea.Cmd {
 	s := m.selected
-	return m.releaseTerminalAndRun(func() tea.Msg {
+	return m.runAsync(func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		target := connectingBanner(os.Stdout, s)
-		prompts := newTerminalPrompts(os.Stdout, target)
+		prompts := newTUIPrompts(m.program, serverLabel(s))
 		sess, err := dial(ctx, s, prompts)
 		if err != nil {
 			return configurePrepMsg{err: fmt.Errorf("connect: %w", err)}
@@ -234,7 +231,7 @@ func (m *model) applyConfigure(iface string, serverAddr netip.Prefix, port int, 
 	return func(m *model) tea.Cmd {
 		sess := m.activeSession
 		s := m.selected
-		return m.releaseTerminalAndRun(func() tea.Msg {
+		return m.runAsync(func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 			defer cancel()
 

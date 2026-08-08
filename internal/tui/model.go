@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -25,7 +24,9 @@ import (
 type screen int
 
 const (
-	screenServerList screen = iota
+	screenVaultAccess screen = iota
+	screenCredentialPrompt
+	screenServerList
 	screenServerForm
 	screenServerRemoveConfirm
 	screenServerDetail
@@ -96,6 +97,20 @@ type model struct {
 	menuOpen              bool
 	menuCategory          int
 	menuCursor            int
+
+	// startup vault access
+	vaultForm      *huh.Form
+	vaultCreating  bool
+	vaultPassword  string
+	vaultConfirm   string
+	vaultFormError string
+
+	// in-app SSH/host-key/sudo credential prompt
+	credentialForm     *huh.Form
+	credentialRequest  *credentialRequestMsg
+	credentialValue    string
+	credentialAccepted bool
+	credentialReturn   screen
 
 	// server list / add / edit / remove
 	selected   domain.Server
@@ -186,14 +201,30 @@ func newModel(v *profilevault.Vault, vaultPath string) *model {
 	return &model{vault: v, vaultPath: vaultPath, screen: screenServerList, width: 100, height: 30}
 }
 
-func (m *model) Init() tea.Cmd { return nil }
+func newLockedModel(vaultPath string, creating bool) *model {
+	m := &model{vaultPath: vaultPath, screen: screenVaultAccess, width: 100, height: 30, vaultCreating: creating}
+	m.startVaultAccessForm()
+	_ = m.vaultForm.Init()
+	return m
+}
+
+func (m *model) Init() tea.Cmd {
+	if m.screen == screenVaultAccess && m.vaultForm != nil {
+		return m.vaultForm.Init()
+	}
+	return nil
+}
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if mouse, ok := msg.(tea.MouseMsg); ok {
+		return m.updateCommanderMouse(mouse)
+	}
 	// Ctrl+C is an application-level escape hatch. Handle it before any
 	// screen or huh form sees the key; huh normally treats Ctrl+C as a
 	// local form abort, which made quitting depend on the active screen.
 	if key, ok := msg.(tea.KeyMsg); ok {
 		if key.String() == "ctrl+c" || key.String() == "f10" {
+			m.cancelCredentialPrompt("application closed")
 			m.closeSessions()
 			return m, tea.Quit
 		}
@@ -206,9 +237,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.menuOpen {
 			return m.updateCommanderMenu(key)
 		}
-		if key.String() == "f9" && m.commanderAvailable() {
+		if (key.String() == "m" || key.String() == "f9") && m.commanderAvailable() {
 			m.openCommanderMenu()
 			return m, nil
+		}
+		if cmd, handled := m.handleCommanderAccelerator(key.String()); handled {
+			return m, cmd
 		}
 		if cmd, handled := m.handleCommanderFunctionKey(key.String()); handled {
 			return m, cmd
@@ -227,6 +261,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+	}
+	if request, ok := msg.(credentialRequestMsg); ok {
+		return m.beginCredentialPrompt(request)
 	}
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
 		oldWidth, oldHeight := m.width, m.height
@@ -317,6 +354,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	keyMsg, isKey := msg.(tea.KeyMsg)
 
 	switch m.screen {
+	case screenVaultAccess:
+		return m.updateVaultAccess(msg)
+	case screenCredentialPrompt:
+		return m.updateCredentialPrompt(msg)
 	case screenServerList:
 		if isKey {
 			return m.updateServerList(keyMsg)
@@ -361,31 +402,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// releaseTerminalAndRun runs fn with the real terminal (Bubble Tea's raw
-// mode released), restoring it again once fn returns - every flow that
-// needs an interactive host-key/password/sudo prompt goes through this,
-// since Bubble Tea otherwise owns stdin in raw mode. This is also the
-// single highest-risk spot in the whole program for a genuine crash: it's
-// the only place doing raw terminal-mode surgery concurrently with
-// Bubble Tea's own event loop, and a reported "the app just dies at the
-// sudo password prompt" crash couldn't be reproduced against a real SSH
-// target despite trying - so on top of fixing every specific bug found,
-// recover() here converts *any* panic in this window into an error
-// message instead of taking the whole program down. The recover defer is
-// registered before ReleaseTerminal specifically so it still runs (LIFO)
-// after RestoreTerminal's defer below, if that's what panics - terminal
-// state gets put back first either way.
-func (m *model) releaseTerminalAndRun(fn func() tea.Msg) tea.Cmd {
+// runAsync keeps Bubble Tea in control of the alternate screen while remote
+// work runs. Interactive SSH questions return as model messages and are
+// answered by an in-app modal instead of tearing down the TUI.
+func (m *model) runAsync(fn func() tea.Msg) tea.Cmd {
 	return func() (result tea.Msg) {
 		defer func() {
 			if r := recover(); r != nil {
 				result = errMsg{err: fmt.Errorf("internal error: %v (this is a bug - please report it)", r)}
 			}
 		}()
-		if err := m.program.ReleaseTerminal(); err != nil {
-			return errMsg{err: err}
-		}
-		defer m.program.RestoreTerminal()
 		return fn()
 	}
 }
@@ -570,19 +596,17 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// connectAndDiscoverCmd dials the server and runs full discovery. It must
-// release the terminal first: Bubble Tea owns stdin in raw mode, but
-// Dial/discovery need to interactively prompt for a host-key confirmation
-// or a password on the same terminal.
+// connectAndDiscoverCmd dials the server and runs full discovery. Interactive
+// host-key, SSH-password and sudo questions are brokered back into Bubble Tea
+// as credentialRequestMsg values while this command waits in the background.
 func (m *model) connectAndDiscoverCmd(s domain.Server) tea.Cmd {
 	m.detailRequestID++
 	requestID := m.detailRequestID
-	return m.releaseTerminalAndRun(func() tea.Msg {
+	return m.runAsync(func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
-		target := connectingBanner(os.Stdout, s)
-		prompts := newTerminalPrompts(os.Stdout, target)
+		prompts := newTUIPrompts(m.program, serverLabel(s))
 		sess, err := dial(ctx, s, prompts)
 		if err != nil {
 			return discoveryMsg{serverID: s.ID, requestID: requestID, err: fmt.Sprintf("connect: %v", err)}

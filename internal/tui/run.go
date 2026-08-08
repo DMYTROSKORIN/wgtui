@@ -2,23 +2,23 @@ package tui
 
 import (
 	"fmt"
-	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/DMYTROSKORIN/wgtui/internal/profilevault"
 )
 
-// Run unlocks (or creates) the local vault in plain terminal mode, then
-// starts the Bubble Tea program. SPEC.md §25: startup should stay under
-// 1s without a server connection - vault unlock is local disk I/O plus a
-// deliberately-slow (argon2id) key derivation, not network, so this holds.
+// Run starts Bubble Tea immediately; the first in-app screen unlocks or creates
+// the local vault. Vault access is local disk I/O plus deliberately-slow
+// Argon2id derivation and never opens a server connection.
 func Run() error {
-	v, vaultPath, err := openOrCreateVault(os.Stdout)
+	vaultPath, err := profilevault.VaultPath()
 	if err != nil {
-		return fmt.Errorf("open vault: %w", err)
+		return fmt.Errorf("resolve vault path: %w", err)
 	}
 
-	m := newModel(v, vaultPath)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	m := newLockedModel(vaultPath, !profilevault.Exists(vaultPath))
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	m.program = p
 
 	final, err := p.Run()

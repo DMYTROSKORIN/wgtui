@@ -72,9 +72,11 @@ go build ./...
 ```
 
 Running `wgtui` without arguments opens the full-screen dashboard. The master
-password is requested once before the dashboard starts. Inside the app, `F9`
-opens the complete command menu, `F1` shows keyboard help, `F5` refreshes,
-`Esc` goes back, and `F10`/`Ctrl+C` exits safely. The minimum interactive
+password is requested by a clearly labelled form inside the application. SSH,
+host-key and sudo questions also use in-app modals that name the remote server.
+Inside the app, `M` opens the complete command menu, `?` shows keyboard help,
+`R` refreshes, `Esc` goes back, and `Q`/`Ctrl+C` exits safely. Highlighted
+letters and all menu/action segments are clickable with the mouse. The minimum interactive
 terminal size is `64×18`; `90×24` or
 larger is recommended. The interface switches between compact, standard and
 wide layouts automatically and preserves the current screen while the terminal
