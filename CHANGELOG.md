@@ -3,6 +3,30 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.3.0] - 2026-08-08
+
+### Added
+
+- A persistent Commander-style Server / Peer / View / Tools / Help menu,
+  reachable with F9, including visible explanations for unavailable actions.
+- A contextual ten-slot F1–F10 action bar and keyboard help covering the full
+  primary workflow without requiring memorized single-letter shortcuts.
+- Stable wide two-pane layouts for Overview, Peers and Diagnose, with
+  recommended actions or selected-object details in the right pane.
+
+### Changed
+
+- Destructive F8/menu actions always enter an explicit confirmation or peer
+  action screen; they never apply a change immediately.
+- Compact peer actions omit secondary metadata to remain usable at `64×18`.
+
+### Verification
+
+- Added menu navigation, reachability, disabled-state, safe dispatch, session
+  cleanup, exact F-bar width and two-pane layout regressions.
+- CI and release validation now cross-build `CGO_ENABLED=0` macOS clients for
+  both amd64 and arm64 before packaging.
+
 ## [0.2.2] - 2026-08-08
 
 ### Changed
@@ -91,6 +115,7 @@ versioning while the project remains below 1.0.
   WireGuard server setup, peer lifecycle, encrypted local storage and release
   packaging.
 
+[0.3.0]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.1.0...v0.2.0

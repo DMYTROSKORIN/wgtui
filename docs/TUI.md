@@ -1,9 +1,9 @@
 # Terminal interface
 
-The TUI is the default `wgtui` interface. It is designed as a stable dashboard,
-not a sequence of unrelated prompts: the server list remains visible beside the
-working area on wide terminals, the active context is always named, and the
-bottom bar always shows the relevant keys.
+The TUI is the default `wgtui` interface. It follows an orthodox Commander-style
+interaction model: a persistent top menu makes every normal action discoverable,
+main screens use stable collection/detail panes, and a ten-slot function-key bar
+keeps the active commands visible.
 
 ## Startup and credentials
 
@@ -41,9 +41,11 @@ content with a fresh salt. A failed write leaves the old vault usable.
   redundant Servers sidebar disappears. `Esc` returns to the server manager.
 - Narrow terminals show a compact Peer / State / Last seen table. Medium terminals
   progressively add VPN IP, RX and TX and place a compact selected-peer card below.
-- Wide terminals use two proportional panels: a peer table and a persistent Selected
-  peer inspector. Endpoint is added to the table only when it still leaves a useful
-  Peer / alias column. Cells are always truncated to one terminal row, never wrapped.
+- Wide terminals use two proportional panels on every main server screen:
+  readiness plus recommended actions on Overview, peer table plus selected-peer
+  inspector on Peers, and check list plus selected-check details on Diagnose.
+  Endpoint is added to the peer table only when it still leaves a useful Peer /
+  alias column. Cells are always truncated to one terminal row, never wrapped.
 - The inspector shows VPN address, interface, endpoint, readable handshake age,
   traffic, full public key, hidden PSK presence, profile availability and ownership.
 - Operations: action selection, a secret-free plan, explicit confirmation,
@@ -82,20 +84,26 @@ existing profile's DNS and supplies the Google default when the old profile had 
 
 | Key | Meaning |
 | --- | --- |
-| `?` | Show keyboard help from dashboard and peer screens |
-| `n` | Add a server or peer in the current context |
-| `e` | Edit the selected server; shortcut to export from the new-client setup screen |
-| `r` | Explicitly refresh the active view |
-| `Enter` | Open the selected server or peer actions |
+| `F1` | Show keyboard help |
+| `F2` | Add a server or peer in the current context |
+| `F3` | Open or view the selected object/actions |
+| `F4` | Edit the selected server |
+| `F5` | Explicitly refresh the active view |
+| `F6` | Configure the open server when applicable |
+| `F7` | Open diagnostics |
+| `F8` | Start the confirmed remove/revoke flow |
+| `F9` | Open the Server / Peer / View / Tools / Help menu |
+| `F10` | Close sessions, restore the terminal and quit safely |
 | `Tab` | Switch dashboard tabs; never request credentials by itself |
 | `Esc` | Cancel the current dialog or return one level |
-| `Ctrl+C` | Close sessions, restore the terminal and quit from every screen |
 
 `Ctrl+C` is handled before any embedded form sees it, so its meaning does not
 change based on focus. Destructive operations cannot use it as confirmation.
 
-Function keys remain compatibility aliases for existing users, but no workflow or
-footer requires them.
+Single-letter shortcuts (`n`, `e`, `r`, `?`, `q`) remain accelerators. They are
+never the only route to a normal action; unavailable menu actions stay visible
+and explain the context they require. Destructive F8/menu actions only open an
+explicit review or confirmation flow.
 
 ## Preshared keys
 
@@ -112,11 +120,13 @@ Protocol reference: <https://www.wireguard.com/protocol/>.
 
 Automated tests cover global quit from every screen, session cleanup, Tab using
 the existing connection, borrowed-session survival across confirmation,
-responsive rendering at every width from 64 through 180 across short/normal/tall
+responsive rendering at every width from 64 through 300 across short/normal/tall
 terminals, shrink and breakpoint redraws, tiny-terminal fallbacks, diagnostic
-scrolling, post-create client setup, QR height safety, keyboard help, peer
+scrolling, all ten function-key slots, menu reachability and disabled-action
+behavior, stable two-pane main screens, post-create client setup, QR height safety, keyboard help, peer
 readability, terminal-control sanitization fuzzing, export-path fuzzing, atomic
 vault password rotation, stable action cursors, portable vault migration, and
 preservation of encrypted data. Network mutations remain
 covered by the transaction and peer-operation tests; final compatibility checks
-must use a disposable WireGuard test server, never a production target.
+must use a disposable WireGuard test server, never a production target. CI also
+cross-builds pure-Go Darwin binaries for amd64 and arm64 before every merge and release.

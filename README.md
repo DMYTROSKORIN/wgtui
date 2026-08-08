@@ -72,10 +72,10 @@ go build ./...
 ```
 
 Running `wgtui` without arguments opens the full-screen dashboard. The master
-password is requested once before the dashboard starts. Inside the app, `?`
-shows keyboard help, `r` refreshes network state, `Esc` goes back, and
-`Ctrl+C` exits safely from every screen. Function keys are optional aliases,
-never required. The minimum interactive terminal size is `64×18`; `90×24` or
+password is requested once before the dashboard starts. Inside the app, `F9`
+opens the complete command menu, `F1` shows keyboard help, `F5` refreshes,
+`Esc` goes back, and `F10`/`Ctrl+C` exits safely. The minimum interactive
+terminal size is `64×18`; `90×24` or
 larger is recommended. The interface switches between compact, standard and
 wide layouts automatically and preserves the current screen while the terminal
 is temporarily too small.

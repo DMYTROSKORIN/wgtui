@@ -54,6 +54,10 @@ func (m *model) View() string {
 		return m.viewTerminalTooSmall()
 	}
 	var body string
+	if m.menuOpen {
+		body = m.viewCommanderMenu()
+		return m.viewCommanderMenuBar() + "\n" + body
+	}
 	switch m.screen {
 	case screenServerForm:
 		body = m.viewServerForm()
@@ -91,7 +95,7 @@ func (m *model) View() string {
 		}
 		body += "\n\n" + ansi.Truncate(style.Render(m.statusMsg), max(1, m.width), "…")
 	}
-	return body
+	return m.viewCommanderMenuBar() + "\n" + body
 }
 
 func (m *model) viewTerminalTooSmall() string {
@@ -137,7 +141,7 @@ func (m *model) viewServerList() string {
 		}
 		content := titleStyle.Render("Servers") + "\n\n" + list.String() + details
 		return appHeader("Server manager") + "\n" + fullPanel(m, content) + "\n" +
-			keyBar(m.width, "Enter Open", "n New", "? Help", "q Quit")
+			m.commanderFunctionBar()
 	}
 
 	leftWidth := clamp(m.width/3, 24, 36)
@@ -165,18 +169,26 @@ func (m *model) viewServerList() string {
 	}
 	right := panelStyle.Width(rightWidth).Height(panelHeight).Render(details)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
-	return appHeader("Server manager") + "\n" + body + "\n" + keyBar(m.width, "Enter Open", "n New", "e Edit", "d Delete", "p Password", "? Help", "q Quit")
+	return appHeader("Server manager") + "\n" + body + "\n" + m.commanderFunctionBar()
 }
 
 func (m *model) viewServerDetail() string {
 	panelHeight := m.dashboardPanelHeight()
 	header := m.viewServerHeader()
-	if layoutModeFor(m.width, m.height) == layoutWide && m.tab == tabPeers {
-		peersWidth, inspectorWidth := peerSplitPanelWidths(m.width)
-		peers := panelStyle.Width(peersWidth).Height(panelHeight).Render(tabsLine(m.tab) + "\n" + m.viewPeerSummary() + "\n" + m.viewPeerList())
-		inspector := panelStyle.Width(inspectorWidth).Height(panelHeight).Render(m.viewSelectedPeerInspector())
-		body := lipgloss.JoinHorizontal(lipgloss.Top, peers, " ", inspector)
-		return header + "\n" + body + "\n" + detailFooter(m.tab, m.width)
+	if layoutModeFor(m.width, m.height) == layoutWide {
+		var body string
+		switch m.tab {
+		case tabPeers:
+			peersWidth, inspectorWidth := peerSplitPanelWidths(m.width)
+			peers := panelStyle.Width(peersWidth).Height(panelHeight).Render(tabsLine(m.tab) + "\n" + m.viewPeerSummary() + "\n" + m.viewPeerList())
+			inspector := panelStyle.Width(inspectorWidth).Height(panelHeight).Render(m.viewSelectedPeerInspector())
+			body = lipgloss.JoinHorizontal(lipgloss.Top, peers, " ", inspector)
+		case tabDiagnose:
+			body = m.viewWideDiagnose(panelHeight)
+		default:
+			body = m.viewWideOverview(panelHeight)
+		}
+		return header + "\n" + body + "\n" + m.commanderFunctionBar()
 	}
 
 	var content strings.Builder
@@ -191,7 +203,7 @@ func (m *model) viewServerDetail() string {
 	}
 
 	main := panelStyle.Width(max(40, m.width-4)).Height(panelHeight).Render(content.String())
-	return header + "\n" + main + "\n" + detailFooter(m.tab, m.width)
+	return header + "\n" + main + "\n" + m.commanderFunctionBar()
 }
 
 func (m *model) viewServerHeader() string {
@@ -223,27 +235,6 @@ func tabsLine(active detailTab) string {
 		}
 	}
 	return strings.Join(parts, "   ")
-}
-
-func detailFooter(tab detailTab, width int) string {
-	if width < recommendedWidth {
-		switch tab {
-		case tabPeers:
-			return keyBar(width, "Enter Actions", "n New", "r Refresh", "? More", "Esc Back")
-		case tabDiagnose:
-			return keyBar(width, "r Refresh", "Tab Next", "? More", "Esc Back")
-		default:
-			return keyBar(width, "i Install", "c Configure", "r Refresh", "? More", "Esc Back")
-		}
-	}
-	switch tab {
-	case tabPeers:
-		return keyBar(width, "Enter Actions", "n New peer", "r Refresh", "Tab Next", "? Help", "Esc Back", "Ctrl+C Quit")
-	case tabDiagnose:
-		return keyBar(width, "r Refresh", "Tab Next", "? Help", "Esc Back", "Ctrl+C Quit")
-	default:
-		return keyBar(width, "i Install", "c Configure", "r Refresh", "Tab Next", "? Help", "Esc Back", "Ctrl+C Quit")
-	}
 }
 
 func appHeader(section string) string {
@@ -287,17 +278,17 @@ func fullPanel(m *model, content string) string {
 }
 
 func (m *model) fullPanelHeight() int {
-	reserved := 5
+	reserved := 6
 	if m.statusMsg != "" {
-		reserved = 8
+		reserved = 9
 	}
 	return max(10, m.height-reserved)
 }
 
 func (m *model) dashboardPanelHeight() int {
-	reserved := 6
+	reserved := 7
 	if m.statusMsg != "" {
-		reserved = 9
+		reserved = 10
 	}
 	return max(10, m.height-reserved)
 }
@@ -315,26 +306,22 @@ func clamp(v, low, high int) int {
 func (m *model) viewHelp() string {
 	if layoutModeFor(m.width, m.height) == layoutCompact {
 		text := titleStyle.Render("Keyboard help") + "\n\n" +
-			keyHint("?", "Open help") + "\n" +
-			keyHint("n", "Add server or peer") + "\n" +
-			keyHint("Enter", "Open / continue") + "\n" +
-			keyHint("Tab", "Switch dashboard tabs") + "\n" +
-			keyHint("↑/↓", "Move selection") + "\n" +
-			keyHint("Esc", "Back / cancel") + "\n" +
-			keyHint("Ctrl+C", "Quit safely")
+			keyHint("F1", "Help") + "   " + keyHint("F2", "New") + "\n" +
+			keyHint("F3", "Open / actions") + "   " + keyHint("F5", "Refresh") + "\n" +
+			keyHint("F7", "Diagnose") + "   " + keyHint("F8", "Remove / revoke") + "\n" +
+			keyHint("F9", "Command menu") + "   " + keyHint("F10", "Quit safely") + "\n" +
+			keyHint("↑/↓", "Move selection") + "   " + keyHint("Esc", "Back / cancel")
 		return appHeader("Help") + "\n" + fullPanel(m, text) + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
 	}
 	text := titleStyle.Render("Keyboard help") + "\n\n" +
-		"?           Open this help\n" +
-		"n           Add server or peer\n" +
-		"e           Edit selected server\n" +
-		"r           Refresh the current view\n" +
-		"Enter       Open server or peer actions\n" +
-		"Tab         Switch dashboard tabs\n" +
-		"Arrows/j/k  Move selection\n" +
-		"Esc         Close dialog or go back\n" +
-		"q           Back (quit from server manager)\n" +
-		"Ctrl+C      Quit safely from every screen\n\n" +
+		"F1          Help                 F6  Configure\n" +
+		"F2          New server/peer      F7  Diagnose\n" +
+		"F3          Open/view/actions    F8  Remove/revoke\n" +
+		"F4          Edit server          F9  Command menu\n" +
+		"F5          Refresh              F10 Quit safely\n" +
+		"Arrows/j/k  Move selection       Tab Switch dashboard tab\n" +
+		"Enter       Open / continue      Esc Close dialog or go back\n\n" +
+		dimStyle.Render("Single-letter shortcuts remain available for experienced users.") + "\n" +
 		dimStyle.Render("Network and destructive operations always show their own status or confirmation.")
 	return appHeader("Help") + "\n" + fullPanel(m, text) + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
 }
@@ -389,6 +376,46 @@ func (m *model) viewOverviewTab() string {
 		b.WriteString("\n" + dimStyle.Render("\"online\" is a heuristic based on handshake recency, not proof of an active connection."))
 	}
 	return b.String()
+}
+
+func (m *model) viewWideOverview(panelHeight int) string {
+	mainWidth, inspectorWidth := peerSplitPanelWidths(m.width)
+	main := panelStyle.Width(mainWidth).Height(panelHeight).Render(tabsLine(m.tab) + "\n\n" + m.viewOverviewTab())
+	actions := panelStyle.Width(inspectorWidth).Height(panelHeight).Render(m.viewOverviewActions())
+	return lipgloss.JoinHorizontal(lipgloss.Top, main, " ", actions)
+}
+
+func (m *model) viewOverviewActions() string {
+	r := m.report
+	var actions []string
+	if m.loading {
+		actions = append(actions, warningStyle.Render("○ Discovery is running"))
+	} else if m.detailErr != "" {
+		actions = append(actions, dangerStyle.Render("✗ Reconnect with F5"))
+	} else {
+		if !r.WireGuard.WgPresent {
+			actions = append(actions, warningStyle.Render("1. Install WireGuard")+"  "+keyHint("i", "start"))
+		} else if len(r.WireGuard.Interfaces) == 0 {
+			actions = append(actions, warningStyle.Render("1. Configure an interface")+"  "+keyHint("c", "start"))
+		} else {
+			actions = append(actions, successStyle.Render("✓ WireGuard is ready"))
+		}
+		if !r.System.SudoAvailable {
+			actions = append(actions, dangerStyle.Render("2. Restore sudo access"))
+		}
+		if !r.Network.IPv4Forwarding {
+			actions = append(actions, warningStyle.Render("3. Enable IPv4 forwarding"))
+		}
+		if len(r.Errors) > 0 {
+			actions = append(actions, warningStyle.Render(fmt.Sprintf("4. Review %d discovery warning(s)", len(r.Errors))))
+		}
+	}
+	if len(actions) == 0 {
+		actions = append(actions, successStyle.Render("✓ No immediate action required"))
+	}
+	return accentHeadingStyle.Render("Recommended actions") + "\n\n" +
+		strings.Join(actions, "\n\n") + "\n\n" +
+		dimStyle.Render("F5 refreshes · F7 opens diagnostics")
 }
 
 func (m *model) viewCompactOverview() string {
