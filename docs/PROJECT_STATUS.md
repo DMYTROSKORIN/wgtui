@@ -4,11 +4,12 @@ Last updated: 2026-08-09
 
 Active branch: `master`
 
-Release target: next release after `v0.4.0` (unversioned as of this checkpoint)
+Release target: `v0.5.0`
 
-Release status: **v0.4.0 published, installed and complete; the top-menu/bottom-bar
-redesign from `docs/UI_MENU_REDESIGN_HANDOFF.md` is implemented, tested and merged
-into `master`, but not yet tagged or released**
+Release status: **releasing now** - the top-menu/bottom-bar redesign from
+`docs/UI_MENU_REDESIGN_HANDOFF.md` is implemented, tested and merged into
+`master`; this checkpoint is being written as part of tagging and publishing
+`v0.5.0`
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state

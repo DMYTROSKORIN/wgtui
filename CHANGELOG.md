@@ -3,7 +3,7 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
-## [Unreleased]
+## [0.5.0] - 2026-08-09
 
 ### Changed
 
