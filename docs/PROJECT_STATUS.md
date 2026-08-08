@@ -1,12 +1,12 @@
 # Project checkpoint
 
-Last updated: 2026-08-08 12:25 CEST
+Last updated: 2026-08-08 12:37 CEST
 
 Active branch: `feat/commander-ui-v0.3.0`
 
 Release target: `v0.3.0`
 
-Release status: **Commander UI complete; v0.3.0 release cycle in progress**
+Release status: **v0.3.0 released and installed**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -31,6 +31,15 @@ with `git status --short --branch` and `git log -5 --oneline`.
   wide mode; compact peer actions fit the supported `64×18` minimum.
 - CI and release validation now cross-build both Darwin architectures with
   `CGO_ENABLED=0` before packaging.
+- PR #13 passed CI #28 and merged into `master` as `4828162`.
+- Annotated tag `v0.3.0` points at `4828162`; release workflow #6 completed
+  Semgrep, validation and GoReleaser successfully.
+- GitHub Release `v0.3.0` is published with checksums, four Linux/macOS
+  archives, two `.deb` files and two `.rpm` files.
+- `scripts/install.sh v0.3.0` verified the published Linux amd64 archive and
+  installed the static `wgtui 0.3.0` binary at `~/.local/bin/wgtui`.
+- Installed `v0.3.0` binary SHA-256:
+  `bf0d425bbe4779e4ebaf0e3d30fb9c66a68431af3a860d8301442daf35476f52`.
 
 - Reviewed the new `3063×1335` screenshot and reproduced its effective
   wide-layout sizes in the text renderer.
@@ -127,10 +136,10 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-The `v0.3.0` implementation and local release checks are complete. Resume by
-committing/pushing the implementation, opening its PR, waiting for CI, merging,
-tagging `v0.3.0`, verifying the release assets and installing the published
-binary locally.
+Release `v0.3.0` is complete. Resume from `master` only for a new user-requested
+change; do not repeat the Commander UI release cycle. First confirm the running
+process was restarted if a screenshot still shows an older version in its
+header.
 
 ## Publishing note
 
