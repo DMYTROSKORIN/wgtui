@@ -1,12 +1,12 @@
 # Project checkpoint
 
-Last updated: 2026-08-08 19:37 CEST
+Last updated: 2026-08-08 19:43 CEST
 
-Active branch: `agent/record-v0.4.0-release`
+Active branch: `master`
 
 Release target: `v0.4.0`
 
-Release status: **v0.4.0 published and installed; checkpoint update in progress**
+Release status: **v0.4.0 published, installed and complete**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -190,11 +190,10 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-`v0.4.0` is complete, published and installed. Finish only the documentation
-checkpoint from `agent/record-v0.4.0-release`: commit/push this file, open and
-merge its PR after CI, then return to a clean synchronized `master`. Future
-product work should start from `master`; do not repeat the already passed
-read-only missing-WireGuard VM test unless connection behavior changes.
+`v0.4.0` is complete, published and installed; there is no pending release
+work. Future product work should start from a clean synchronized `master`. Do
+not repeat the already passed read-only missing-WireGuard VM test unless
+connection behavior changes.
 
 ## Publishing note
 
