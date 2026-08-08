@@ -1,12 +1,12 @@
 # Project checkpoint
 
-Last updated: 2026-08-08
+Last updated: 2026-08-08 06:05 CEST
 
-Active branch: `fix/peer-loading-recovery`
+Active branch: `master`
 
 Release target: `v0.2.1`
 
-Release status: **implementation verified; publishing pending**
+Release status: **published and installed**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -65,6 +65,20 @@ with `git status --short --branch` and `git log -5 --oneline`.
 - actionlint `v1.7.12`: pass for CI and release workflows.
 - New peer-loading and rendering regressions pass, including every wide
   terminal width `135..260` and the reported screenshot-equivalent width.
+- The affected TUI and SSH transport packages passed 20 consecutive test runs.
+- Two additional 10-second fuzz runs completed about 390k terminal-text and
+  662k export-path executions without failure.
+- PR #10 passed build, vet, unit, race, Staticcheck, govulncheck and Semgrep CI,
+  then merged into `master` as `0665b82`.
+- Master CI #23 passed.
+- Annotated tag `v0.2.1` points at `0665b82` and is pushed to origin.
+- Release workflow #4 passed Semgrep, validation and GoReleaser.
+- GitHub Release `v0.2.1` is published (not draft/prerelease) with checksums,
+  four Linux/macOS archives, two `.deb` files and two `.rpm` files.
+- `scripts/install.sh v0.2.1` verified the published archive checksum and
+  installed `wgtui 0.2.1` at `~/.local/bin/wgtui` with mode `0755`.
+- Installed `v0.2.1` binary SHA-256:
+  `8f04b163e3ba25277fd8d8e354ad863116c9fcd55f6958f942292bca6ac48e2d`.
 - PR #7 (`Release v0.2.0: polished responsive TUI`) passed both GitHub CI
   jobs, including build, vet, unit, race, Staticcheck, govulncheck and Semgrep.
 - PR #7 was merged into `master` as `682924c`.
@@ -82,10 +96,11 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-The `v0.2.1` implementation and local verification are complete. Remaining
-steps are to commit and push this branch, pass PR CI, merge, tag `v0.2.1`, pass
-the release workflow, install the published artifact locally, and record the
-final release state here.
+Release `v0.2.1` is complete; there is no unfinished implementation or
+publishing step. For new work, start from the latest `origin/master` and create
+a feature branch. Ask the user to reproduce peer loading and the wide layout
+with the installed `wgtui 0.2.1`; any remaining real-server behavior is a new
+scoped diagnostic, not a reason to repeat this release process.
 
 ## Publishing note
 
