@@ -13,13 +13,13 @@ import (
 func (m *model) startVaultAccessForm() {
 	m.vaultPassword, m.vaultConfirm = "", ""
 	title := "Master password"
-	description := "Unlocks only the encrypted vault on this computer. It is never sent to a server."
+	description := "Local vault only; never sent to any server."
 	fields := []huh.Field{
 		huh.NewInput().Title(title).Description(description).EchoMode(huh.EchoModePassword).Value(&m.vaultPassword),
 	}
 	if m.vaultCreating {
-		fields[0] = huh.NewInput().Title("Create master password").
-			Description("Encrypts local data. Minimum 8 characters; it cannot be recovered.").
+		fields[0] = huh.NewInput().Title("Create master password (8+ characters)").
+			Description("Local vault only; never sent to any server.").
 			EchoMode(huh.EchoModePassword).Value(&m.vaultPassword).
 			Validate(func(value string) error {
 				if len(value) < 8 {
@@ -86,10 +86,10 @@ func (m *model) updateVaultAccess(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) viewVaultAccess() string {
 	mode := "Unlock local vault"
-	intro := "Enter the master password created for wgtui on this computer."
+	intro := "Enter the master password created for wgtui on this computer. It unlocks local data only and is never sent to any server."
 	if m.vaultCreating {
 		mode = "Protect local vault"
-		intro = "First start: create a master password for locally stored server metadata and client profiles."
+		intro = "First start: create a master password for local server metadata and client profiles. It is never sent to any server."
 	}
 	content := titleStyle.Render(mode) + "\n\n"
 	if layoutModeFor(m.width, m.height) != layoutCompact {
