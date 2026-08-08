@@ -1,12 +1,12 @@
 # Project checkpoint
 
-Last updated: 2026-08-08 12:10 CEST
+Last updated: 2026-08-08 12:25 CEST
 
 Active branch: `feat/commander-ui-v0.3.0`
 
 Release target: `v0.3.0`
 
-Release status: **Commander UI implementation in progress**
+Release status: **Commander UI complete; v0.3.0 release cycle in progress**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -23,6 +23,14 @@ with `git status --short --branch` and `git log -5 --oneline`.
   compatibility and the tested Go business layer.
 - Added `docs/COMMANDER_UI.md` as the menu, F-key, two-pane and cross-platform
   behavior contract for `v0.3.0`.
+- Implemented the persistent Server/Peer/View/Tools/Help menu with disabled
+  reasons, F9 navigation and safe action dispatch through existing workflows.
+- Implemented a contextual ten-slot F1-F10 bar whose rendered width is exact at
+  every supported width from 64 through 300 columns.
+- Overview, Peers and Diagnose now retain stable collection/detail panes in
+  wide mode; compact peer actions fit the supported `64×18` minimum.
+- CI and release validation now cross-build both Darwin architectures with
+  `CGO_ENABLED=0` before packaging.
 
 - Reviewed the new `3063×1335` screenshot and reproduced its effective
   wide-layout sizes in the text renderer.
@@ -87,6 +95,10 @@ with `git status --short --branch` and `git log -5 --oneline`.
 - The affected TUI and SSH transport packages passed 20 consecutive test runs.
 - Two additional 10-second fuzz runs completed about 390k terminal-text and
   662k export-path executions without failure.
+- Commander UI verification passed: all package and race tests, vet,
+  Staticcheck, Semgrep, govulncheck (0 called vulnerabilities), Darwin
+  amd64/arm64 cross-builds, GoReleaser check/snapshot, about 596k terminal-text
+  fuzz executions and 806k export-path fuzz executions.
 - PR #10 passed build, vet, unit, race, Staticcheck, govulncheck and Semgrep CI,
   then merged into `master` as `0665b82`.
 - Master CI #23 passed.
@@ -115,10 +127,10 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-Release `v0.2.2` is complete. Continue `v0.3.0` from the Commander UI contract:
-implement the persistent top menu and contextual F1–F10 bar first, then adapt
-the two-pane screens and add interaction/layout/macOS build regressions before
-the release cycle.
+The `v0.3.0` implementation and local release checks are complete. Resume by
+committing/pushing the implementation, opening its PR, waiting for CI, merging,
+tagging `v0.3.0`, verifying the release assets and installing the published
+binary locally.
 
 ## Publishing note
 

@@ -549,11 +549,13 @@ func (m *model) viewActionMenu() string {
 		}
 		menu.WriteString("\n")
 	}
-	card := accentHeadingStyle.Render("Peer") + "\n\n" +
-		fmt.Sprintf("%s  %s\nVPN IP: %s   Interface: %s\nPublic key: %s\n\n",
-			selectedStyle.Render(terminalText(p.Name)), peerStateBadge(p.State), orDefault(terminalText(p.VPNIP), "-"),
-			orDefault(terminalText(p.Interface), "-"), terminalText(peerview.ShortenKey(p.PublicKey))) +
-		menu.String()
+	card := accentHeadingStyle.Render("Peer") + "\n\n" + selectedStyle.Render(terminalText(p.Name)) + "  " + peerStateBadge(p.State) + "\n\n"
+	if layoutModeFor(m.width, m.height) != layoutCompact {
+		card += fmt.Sprintf("VPN IP: %s   Interface: %s\nPublic key: %s\n\n",
+			orDefault(terminalText(p.VPNIP), "-"), orDefault(terminalText(p.Interface), "-"),
+			terminalText(peerview.ShortenKey(p.PublicKey)))
+	}
+	card += strings.TrimSuffix(menu.String(), "\n")
 	return appHeader(m.selected.DisplayName+" / Peers") + "\n" +
 		fullPanel(m, card) + "\n" +
 		keyBar(m.width, "↑/↓ Select", "Enter Continue", "Esc Back", "Ctrl+C Quit")

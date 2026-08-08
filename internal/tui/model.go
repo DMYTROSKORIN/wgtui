@@ -93,6 +93,9 @@ type model struct {
 	width                 int
 	height                int
 	helpReturn            screen
+	menuOpen              bool
+	menuCategory          int
+	menuCursor            int
 
 	// server list / add / edit / remove
 	selected   domain.Server
@@ -199,6 +202,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// small. Non-key messages (including completed network operations)
 			// still flow through the state machine below.
 			return m, nil
+		}
+		if m.menuOpen {
+			return m.updateCommanderMenu(key)
+		}
+		if key.String() == "f9" && m.commanderAvailable() {
+			m.openCommanderMenu()
+			return m, nil
+		}
+		if cmd, handled := m.handleCommanderFunctionKey(key.String()); handled {
+			return m, cmd
 		}
 		switch key.String() {
 		case "f1":
@@ -533,13 +546,17 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if m.tab == tabDiagnose {
+		maxOffset := max(0, len(m.diagnoseLines())-m.diagnoseVisibleRows())
+		if layoutModeFor(m.width, m.height) == layoutWide {
+			maxOffset = max(0, len(m.checks)-1)
+		}
 		switch msg.String() {
 		case "up", "k":
 			if m.diagnoseOffset > 0 {
 				m.diagnoseOffset--
 			}
 		case "down", "j":
-			if m.diagnoseOffset < max(0, len(m.diagnoseLines())-m.diagnoseVisibleRows()) {
+			if m.diagnoseOffset < maxOffset {
 				m.diagnoseOffset++
 			}
 		}
