@@ -14,15 +14,20 @@ import (
 type errMsg struct{ err error }
 
 type discoveryMsg struct {
-	report discovery.Report
-	state  discovery.State
-	err    string
-	sess   *session
+	serverID  string
+	requestID uint64
+	report    discovery.Report
+	state     discovery.State
+	err       string
+	sess      *session
 }
 
 type peerListMsg struct {
-	peers []peerview.Peer
-	err   string
+	serverID       string
+	requestID      uint64
+	peers          []peerview.Peer
+	err            string
+	connectionLost bool
 }
 
 type diagnoseMsg struct {
