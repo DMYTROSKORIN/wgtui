@@ -1,13 +1,12 @@
 # Project checkpoint
 
-Last updated: 2026-08-08 19:22 CEST
+Last updated: 2026-08-08 19:37 CEST
 
-Active branch: `feat/mouse-credential-ui-v0.4.0`
+Active branch: `agent/record-v0.4.0-release`
 
 Release target: `v0.4.0`
 
-Release status: **implementation and local release matrix complete; publishing
-in progress; PR #15 CI is green**
+Release status: **v0.4.0 published and installed; checkpoint update in progress**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -124,6 +123,17 @@ with `git status --short --branch` and `git log -5 --oneline`.
 - PR #15 CI run `31269116803`: pass after stabilizing the vault guidance across
   runner-dependent text widths. Linux/macOS builds, vet, unit, race,
   Staticcheck, govulncheck and Semgrep are green at commit `98f3e0c`.
+- PR #15 merged into `master` as `a63d3fb`; master CI run `31269480947`
+  passed all build, macOS cross-build, vet, unit, race, Staticcheck,
+  govulncheck and Semgrep gates.
+- Annotated tag `v0.4.0` points at `a63d3fb` and is pushed to origin.
+- Release workflow `31269636963` passed Semgrep, validation and GoReleaser.
+- GitHub Release `v0.4.0` is published (not draft/prerelease) with checksums,
+  four Linux/macOS archives, two `.deb` files and two `.rpm` files.
+- `scripts/install.sh v0.4.0` verified the published Linux amd64 archive and
+  installed `wgtui 0.4.0` at `~/.local/bin/wgtui` with mode `0755`.
+- Installed `v0.4.0` binary SHA-256:
+  `4a3f284fdf44955518a046a0ea3441726f2daa3827f53d795b82ed457d5556a3`.
 
 - `go test ./...`: pass.
 - `go test -race ./...`: pass.
@@ -180,14 +190,11 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-Continue `v0.4.0` from `feat/mouse-credential-ui-v0.4.0`. The implementation and
-full local release matrix are complete. GitHub CLI and SSH authentication are
-verified; `origin` uses SSH and this repository bypasses the broken system SSH
-include with repository-local `ssh -F /dev/null`. PR #15 is open and its full CI
-is green. Commit/push the final changelog/checkpoint update, wait for the final
-CI, merge, tag/release `v0.4.0`, and install/verify it locally. Do not repeat the
-already passed read-only missing-WireGuard VM test unless connection behavior
-changes.
+`v0.4.0` is complete, published and installed. Finish only the documentation
+checkpoint from `agent/record-v0.4.0-release`: commit/push this file, open and
+merge its PR after CI, then return to a clean synchronized `master`. Future
+product work should start from `master`; do not repeat the already passed
+read-only missing-WireGuard VM test unless connection behavior changes.
 
 ## Publishing note
 
