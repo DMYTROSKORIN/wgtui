@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/domain"
 	"github.com/DMYTROSKORIN/wgtui/internal/peerops"
@@ -156,6 +157,100 @@ func TestLongPeerErrorCannotOverwritePanelBorder(t *testing.T) {
 			}
 		}
 		assertViewFits(t, m.View(), width, 34)
+	}
+}
+
+func TestWidePeerPanelBordersStayAligned(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office", DisplayName: "Paynet Office 308"})
+	m.screen, m.tab = screenServerDetail, tabPeers
+	m.selected = domain.Server{ID: "office", DisplayName: "Paynet Office 308"}
+	m.detailSession = &session{cleanup: func() {}}
+	m.peersLoaded = true
+	handshake := int64(41 * 60 * 60)
+	m.peers = []peerview.Peer{
+		{Name: "", PublicKey: "c9HRmAcoAIa0wbKvvEhelbKdMY5BRdNfmsXvm1gDVww=", Interface: "wg0", VPNIP: "10.10.0.4/32", Endpoint: "89.141.46.152:56806", State: "idle", LatestHandshakeSeconds: &handshake, RxBytes: 53 * 1024 * 1024},
+		{Name: "", PublicKey: "4Gs9JziKexample", Interface: "wg0", VPNIP: "10.10.0.5/32", State: "idle", LatestHandshakeSeconds: &handshake, RxBytes: 124 * 1024 * 1024},
+	}
+	for width := 135; width <= 260; width++ {
+		m.Update(tea.WindowSizeMsg{Width: width, Height: 40})
+		m.rebuildPeerTable()
+		var expected []int
+		for i, line := range strings.Split(m.View(), "\n") {
+			plain := ansi.Strip(line)
+			if strings.Count(plain, "│") != 4 {
+				continue
+			}
+			positions := runePositions(plain, '│')
+			if expected == nil {
+				expected = positions
+				continue
+			}
+			if !equalInts(positions, expected) {
+				t.Fatalf("width %d line %d panel borders shifted: got %v, want %v:\n%s", width, i+1, positions, expected, plain)
+			}
+		}
+		if len(expected) != 4 {
+			t.Fatalf("width %d did not render four wide-panel borders", width)
+		}
+	}
+}
+
+func runePositions(value string, target rune) []int {
+	var positions []int
+	position := 0
+	for _, r := range value {
+		if r == target {
+			positions = append(positions, position)
+		}
+		position += lipgloss.Width(string(r))
+	}
+	return positions
+}
+
+func equalInts(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestPeerTableRowsArePlainAndSummaryIsScannable(t *testing.T) {
+	m := testModel(t)
+	m.peersLoaded = true
+	m.peers = []peerview.Peer{
+		{Name: "Alice", Managed: true, State: "online"},
+		{Name: "", PublicKey: "unmanaged-key", State: "never_connected"},
+	}
+	m.rebuildPeerTable()
+	for rowIndex, row := range m.peerTable.Rows() {
+		for columnIndex, cell := range row {
+			if strings.Contains(cell, "\x1b") {
+				t.Fatalf("row %d column %d contains nested ANSI that can reset selection: %q", rowIndex, columnIndex, cell)
+			}
+		}
+	}
+	summary := ansi.Strip(m.viewPeerSummary())
+	for _, want := range []string{"2 total", "1 online", "1 attention", "1 unmanaged"} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("summary %q does not contain %q", summary, want)
+		}
+	}
+}
+
+func TestAppHeaderIdentifiesRunningVersion(t *testing.T) {
+	previous := Version
+	Version = "1.2.3"
+	t.Cleanup(func() { Version = previous })
+	header := ansi.Strip(appHeader("Server manager"))
+	for _, want := range []string{"wgtui", "v1.2.3", "Server manager"} {
+		if !strings.Contains(header, want) {
+			t.Fatalf("header %q does not contain %q", header, want)
+		}
 	}
 }
 
