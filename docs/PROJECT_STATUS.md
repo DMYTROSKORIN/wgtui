@@ -6,9 +6,7 @@ Active branch: `master`
 
 Release target: `v0.5.2`
 
-Release status: **`v0.5.1` published, installed and complete; `v0.5.2` releasing
-now** with one more real bug found while verifying `v0.5.1` itself - Alt+category
-did nothing while a different category's dropdown was already open
+Release status: **v0.5.2 published, installed and complete**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -28,6 +26,18 @@ with `git status --short --branch` and `git log -5 --oneline`.
   (`internal/tui/menu_redesign_test.go`).
 - `gofmt`, `go build`, `go vet`, `staticcheck`, `go test ./...`,
   `go test -race ./...` pass on the changed tree.
+- Pushed `master` directly (commit `5a432bf`); the pre-push Semgrep gate (101
+  rules, 114 files) was clean.
+- Annotated tag `v0.5.2` points at `5a432bf` and is pushed to origin. Release
+  workflow run `31283381907` passed all three jobs (`semgrep`, `validate`,
+  `goreleaser`).
+- GitHub Release `v0.5.2` is published (not draft/prerelease) with
+  `checksums.txt`, four Linux/macOS archives, two `.deb` files and two `.rpm`
+  files.
+- `scripts/install.sh v0.5.2` verified the published Linux amd64 archive and
+  installed `wgtui 0.5.2` at `~/.local/bin/wgtui`.
+- Installed `v0.5.2` binary SHA-256:
+  `a1f2e390470f851695e38e995f73042d1cef8658b2e527f3997ba13498348186`.
 
 ## Completed in the `v0.5.1` release cycle
 
@@ -326,11 +336,18 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-`v0.5.0` is complete, published and installed; there is no pending release
+`v0.5.2` is complete, published and installed; there is no pending release
 work. Future product work should start from a clean synchronized `master`. Do
 not repeat the already-passed live install test against `192.168.122.245`
 unless install/discovery behavior changes; that VM currently has WireGuard
 installed with no interface configured.
+
+The user is testing the live installed binary hands-on and has reported real
+bugs found this way twice in a row (`v0.5.0`→`v0.5.1`, then a bug found while
+verifying `v0.5.1` itself→`v0.5.2`). Screenshots/reports referencing
+`Alt+letter` or top-menu behavior should be taken at face value and
+investigated for a real code gap first - both prior reports turned out to be
+genuine bugs, not terminal/environment quirks.
 
 ## Publishing note
 
