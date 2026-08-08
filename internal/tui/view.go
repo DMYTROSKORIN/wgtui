@@ -53,10 +53,16 @@ func (m *model) View() string {
 	if terminalTooSmall(m.width, m.height) {
 		return m.viewTerminalTooSmall()
 	}
+	if m.screen == screenVaultAccess {
+		return m.anchorFooter(m.viewVaultAccess())
+	}
+	if m.screen == screenCredentialPrompt {
+		return m.anchorFooter(m.viewCredentialPrompt())
+	}
 	var body string
 	if m.menuOpen {
 		body = m.viewCommanderMenu()
-		return m.viewCommanderMenuBar() + "\n" + body
+		return m.anchorFooter(m.viewCommanderMenuBar() + "\n" + body)
 	}
 	switch m.screen {
 	case screenServerForm:
@@ -93,9 +99,35 @@ func (m *model) View() string {
 		if m.statusErr {
 			style = dangerStyle
 		}
-		body += "\n\n" + ansi.Truncate(style.Render(m.statusMsg), max(1, m.width), "…")
+		status := ansi.Truncate(style.Render(m.statusMsg), max(1, m.width), "…")
+		if split := strings.LastIndex(body, "\n"); split >= 0 {
+			body = body[:split] + "\n\n" + status + body[split:]
+		} else {
+			body += "\n" + status
+		}
 	}
-	return m.viewCommanderMenuBar() + "\n" + body
+	return m.anchorFooter(m.viewCommanderMenuBar() + "\n" + body)
+}
+
+// anchorFooter keeps the final action/help row on the terminal's physical
+// bottom line. Besides making the layout feel stable while resizing, this is
+// what keeps rendered buttons and their mouse hit areas on the same row.
+func (m *model) anchorFooter(view string) string {
+	lines := strings.Split(strings.TrimSuffix(view, "\n"), "\n")
+	missing := m.height - len(lines)
+	if missing <= 0 || len(lines) == 0 {
+		return strings.Join(lines, "\n")
+	}
+	footerRows := 1
+	if m.statusMsg != "" && len(lines) > 1 {
+		footerRows = 2
+	}
+	insertAt := len(lines) - footerRows
+	result := make([]string, 0, m.height)
+	result = append(result, lines[:insertAt]...)
+	result = append(result, make([]string, missing)...)
+	result = append(result, lines[insertAt:]...)
+	return strings.Join(result, "\n")
 }
 
 func (m *model) viewTerminalTooSmall() string {
@@ -141,7 +173,7 @@ func (m *model) viewServerList() string {
 		}
 		content := titleStyle.Render("Servers") + "\n\n" + list.String() + details
 		return appHeader("Server manager") + "\n" + fullPanel(m, content) + "\n" +
-			m.commanderFunctionBar()
+			m.commanderActionBar()
 	}
 
 	leftWidth := clamp(m.width/3, 24, 36)
@@ -169,7 +201,7 @@ func (m *model) viewServerList() string {
 	}
 	right := panelStyle.Width(rightWidth).Height(panelHeight).Render(details)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
-	return appHeader("Server manager") + "\n" + body + "\n" + m.commanderFunctionBar()
+	return appHeader("Server manager") + "\n" + body + "\n" + m.commanderActionBar()
 }
 
 func (m *model) viewServerDetail() string {
@@ -188,7 +220,7 @@ func (m *model) viewServerDetail() string {
 		default:
 			body = m.viewWideOverview(panelHeight)
 		}
-		return header + "\n" + body + "\n" + m.commanderFunctionBar()
+		return header + "\n" + body + "\n" + m.commanderActionBar()
 	}
 
 	var content strings.Builder
@@ -203,7 +235,7 @@ func (m *model) viewServerDetail() string {
 	}
 
 	main := panelStyle.Width(max(40, m.width-4)).Height(panelHeight).Render(content.String())
-	return header + "\n" + main + "\n" + m.commanderFunctionBar()
+	return header + "\n" + main + "\n" + m.commanderActionBar()
 }
 
 func (m *model) viewServerHeader() string {
@@ -306,22 +338,22 @@ func clamp(v, low, high int) int {
 func (m *model) viewHelp() string {
 	if layoutModeFor(m.width, m.height) == layoutCompact {
 		text := titleStyle.Render("Keyboard help") + "\n\n" +
-			keyHint("F1", "Help") + "   " + keyHint("F2", "New") + "\n" +
-			keyHint("F3", "Open / actions") + "   " + keyHint("F5", "Refresh") + "\n" +
-			keyHint("F7", "Diagnose") + "   " + keyHint("F8", "Remove / revoke") + "\n" +
-			keyHint("F9", "Command menu") + "   " + keyHint("F10", "Quit safely") + "\n" +
+			keyHint("?", "Help") + "   " + keyHint("N", "New") + "\n" +
+			keyHint("O", "Open") + "   " + keyHint("A", "Peer actions") + "\n" +
+			keyHint("R", "Refresh") + "   " + keyHint("D", "Diagnose") + "\n" +
+			keyHint("M", "Command menu") + "   " + keyHint("Q", "Quit safely") + "\n" +
 			keyHint("↑/↓", "Move selection") + "   " + keyHint("Esc", "Back / cancel")
 		return appHeader("Help") + "\n" + fullPanel(m, text) + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
 	}
 	text := titleStyle.Render("Keyboard help") + "\n\n" +
-		"F1          Help                 F6  Configure\n" +
-		"F2          New server/peer      F7  Diagnose\n" +
-		"F3          Open/view/actions    F8  Remove/revoke\n" +
-		"F4          Edit server          F9  Command menu\n" +
-		"F5          Refresh              F10 Quit safely\n" +
+		"?           Help                 C   Configure\n" +
+		"N           New server/peer      D   Diagnose\n" +
+		"O / Enter   Open selected        X   Remove/revoke\n" +
+		"E           Edit server          M   Command menu\n" +
+		"R           Refresh              Q   Quit safely\n" +
 		"Arrows/j/k  Move selection       Tab Switch dashboard tab\n" +
 		"Enter       Open / continue      Esc Close dialog or go back\n\n" +
-		dimStyle.Render("Single-letter shortcuts remain available for experienced users.") + "\n" +
+		dimStyle.Render("Highlighted letters in the menu and bottom bar are direct shortcuts. Mouse clicks work too.") + "\n" +
 		dimStyle.Render("Network and destructive operations always show their own status or confirmation.")
 	return appHeader("Help") + "\n" + fullPanel(m, text) + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
 }
@@ -391,7 +423,7 @@ func (m *model) viewOverviewActions() string {
 	if m.loading {
 		actions = append(actions, warningStyle.Render("○ Discovery is running"))
 	} else if m.detailErr != "" {
-		actions = append(actions, dangerStyle.Render("✗ Reconnect with F5"))
+		actions = append(actions, dangerStyle.Render("✗ Reconnect with R"))
 	} else {
 		if !r.WireGuard.WgPresent {
 			actions = append(actions, warningStyle.Render("1. Install WireGuard")+"  "+keyHint("i", "start"))
@@ -415,7 +447,7 @@ func (m *model) viewOverviewActions() string {
 	}
 	return accentHeadingStyle.Render("Recommended actions") + "\n\n" +
 		strings.Join(actions, "\n\n") + "\n\n" +
-		dimStyle.Render("F5 refreshes · F7 opens diagnostics")
+		dimStyle.Render("R refreshes · D opens diagnostics")
 }
 
 func (m *model) viewCompactOverview() string {
@@ -470,9 +502,8 @@ func (m *model) viewConfirm() string {
 }
 
 // viewApplying is shown for the entire duration of an async apply step -
-// the terminal is released during this window (see releaseTerminalAndRun),
-// so any interactive host-key/password/sudo prompts render directly on
-// top of this text via the real terminal, not through Bubble Tea.
+// remote work runs asynchronously while SSH/sudo questions appear as
+// credential modals inside Bubble Tea's alternate screen.
 func (m *model) viewApplying() string {
 	return appHeader(m.selected.DisplayName) + "\n" +
 		fullPanel(m,

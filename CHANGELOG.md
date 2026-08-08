@@ -3,6 +3,23 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.4.0] - 2026-08-08
+
+### Added
+
+- Mouse-clickable top categories, dropdown actions and segmented bottom actions.
+- Branded in-app forms for local master-password unlock, SSH host-key trust,
+  SSH login passwords and remote sudo passwords.
+- Highlighted letter accelerators throughout the menu and action bar, following
+  btop's discoverable shortcut convention.
+
+### Changed
+
+- Replaced the visually continuous F1-F10 strip with sharply separated,
+  contextual letter actions.
+- Remote work no longer releases Bubble Tea's alternate screen to read a
+  password from the plain terminal.
+
 ## [0.3.0] - 2026-08-08
 
 ### Added
@@ -115,6 +132,7 @@ versioning while the project remains below 1.0.
   WireGuard server setup, peer lifecycle, encrypted local storage and release
   packaging.
 
+[0.4.0]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.2.0...v0.2.1

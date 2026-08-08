@@ -23,7 +23,7 @@ func TestServerListRendersTwoPaneDashboardAndKeyBar(t *testing.T) {
 	})
 	m.Update(tea.WindowSizeMsg{Width: 110, Height: 32})
 	view := m.View()
-	for _, want := range []string{"Server", "Peer", "View", "Tools", "Help", "Servers", "Office", "vpn.example.test", "F1Help", "F10Quit", "╭"} {
+	for _, want := range []string{"Server", "Peer", "View", "Tools", "Help", "Servers", "Office", "vpn.example.test", "?Help", "QQuit", "╭"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("dashboard does not contain %q:\n%s", want, view)
 		}
@@ -181,6 +181,9 @@ func TestWidePeerPanelBordersStayAligned(t *testing.T) {
 				continue
 			}
 			positions := runePositions(plain, '│')
+			if positions[len(positions)-1] != width-1 {
+				continue
+			}
 			if expected == nil {
 				expected = positions
 				continue

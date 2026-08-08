@@ -11,7 +11,7 @@ not a dependency on S-Lang or curses.
   accelerators, never the only route.
 - Main screens retain a stable two-pane geometry: collection/task context on
   the left and selected-object details on the right.
-- The top menu and bottom function-key bar remain in fixed rows. Async state
+- The top menu and bottom letter-action bar remain in fixed rows. Async state
   changes update content, not the overall frame.
 - Linux and macOS use the same pure-Go code and keyboard model. Release builds
   remain `CGO_ENABLED=0` for Linux/macOS on amd64/arm64.
@@ -30,31 +30,32 @@ The persistent menu categories are:
 | Tools | Change vault password and future maintenance actions |
 | Help | Keyboard help, version/about, quit |
 
-`F9` opens the command menu. Left/right switches category, up/down selects an
+`M` opens the command menu. Left/right switches category, up/down selects an
 item, Enter executes it, and Esc closes it without changing the underlying
-screen. Unavailable actions remain visible with a reason instead of silently
-disappearing.
+screen. Every category and item is mouse-clickable. Unavailable actions remain
+visible with a reason instead of silently disappearing.
 
-## Function-key bar
+## Letter-action bar
 
-The bottom row always reserves ten equal slots. Labels are contextual, but the
-core meaning stays stable:
+The bottom row is divided into high-contrast segments. Each action exposes a
+highlighted letter, matching btop's discoverable shortcut convention:
 
 | Key | Stable meaning |
 | --- | --- |
-| F1 | Help |
-| F2 | New server or peer |
-| F3 | Open/view selected object |
-| F4 | Edit selected server |
-| F5 | Refresh current data |
-| F6 | Configure server when applicable |
-| F7 | Diagnose/view diagnostics |
-| F8 | Remove server or revoke peer |
-| F9 | Menu |
-| F10 | Quit safely |
+| ? | Help |
+| N | New server or peer |
+| O | Open selected server |
+| E | Edit selected server |
+| R | Refresh current data |
+| C | Configure server when applicable |
+| D | Diagnose/view diagnostics |
+| A | Selected peer actions |
+| X | Remove server or revoke peer |
+| M | Menu |
+| Q | Quit safely |
 
-At the supported minimum `64×18`, labels may abbreviate but all ten keys remain
-visible. Wider terminals use descriptive labels.
+At the supported minimum `64×18`, labels may abbreviate but accelerator letters
+remain visible. Wider terminals use descriptive labels. Each segment is clickable.
 
 ## Screen model
 
@@ -62,7 +63,7 @@ visible. Wider terminals use descriptive labels.
 
 - Left: registered servers and selection.
 - Right: target, authentication method and a concise next-action explanation.
-- Enter/F3 opens the selected server; F2/F4/F8 create/edit/remove.
+- Enter/O opens the selected server; N/E/X create/edit/remove.
 
 ### Server detail
 
@@ -90,7 +91,7 @@ with immediate destructive behavior.
 
 - Exhaustive width/height layout tests, including the supported minimum.
 - Menu reachability and disabled-action tests for every screen context.
-- F1–F10 dispatch tests and compact-label bounds.
+- Letter-accelerator and mouse dispatch tests plus compact-label bounds.
 - ANSI-free table rows and fixed-border position properties.
 - Race tests for async menu-triggered refreshes.
 - Linux and Darwin cross-builds for amd64 and arm64 in every release.

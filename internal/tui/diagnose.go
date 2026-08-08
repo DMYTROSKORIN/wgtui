@@ -45,7 +45,7 @@ func (m *model) viewWideDiagnose(panelHeight int) string {
 	} else {
 		detail += wrapPlainText(c.Detail, max(20, inspectorWidth-4), 8)
 	}
-	detail += "\n\n" + dimStyle.Render("F5 rebuilds all checks")
+	detail += "\n\n" + dimStyle.Render("R rebuilds all checks")
 	left := panelStyle.Width(listWidth).Height(panelHeight).Render(list.String())
 	right := panelStyle.Width(inspectorWidth).Height(panelHeight).Render(detail)
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
