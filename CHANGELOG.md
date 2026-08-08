@@ -3,7 +3,7 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
-## [Unreleased]
+## [0.4.0] - 2026-08-08
 
 ### Added
 
@@ -132,6 +132,7 @@ versioning while the project remains below 1.0.
   WireGuard server setup, peer lifecycle, encrypted local storage and release
   packaging.
 
+[0.4.0]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/DMYTROSKORIN/wgtui/compare/v0.2.0...v0.2.1

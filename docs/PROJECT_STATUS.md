@@ -1,13 +1,13 @@
 # Project checkpoint
 
-Last updated: 2026-08-08 18:44 CEST
+Last updated: 2026-08-08 19:22 CEST
 
 Active branch: `feat/mouse-credential-ui-v0.4.0`
 
 Release target: `v0.4.0`
 
 Release status: **implementation and local release matrix complete; publishing
-in progress**
+in progress; PR #15 CI is green**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -121,6 +121,9 @@ with `git status --short --branch` and `git log -5 --oneline`.
   amd64/arm64 archives plus Linux deb/rpm packages and checksums produced.
 - Read-only missing-WireGuard Ubuntu 24.04 VM integration: pass; no remote
   mutation was applied.
+- PR #15 CI run `31269116803`: pass after stabilizing the vault guidance across
+  runner-dependent text widths. Linux/macOS builds, vet, unit, race,
+  Staticcheck, govulncheck and Semgrep are green at commit `98f3e0c`.
 
 - `go test ./...`: pass.
 - `go test -race ./...`: pass.
@@ -180,15 +183,16 @@ with `git status --short --branch` and `git log -5 --oneline`.
 Continue `v0.4.0` from `feat/mouse-credential-ui-v0.4.0`. The implementation and
 full local release matrix are complete. GitHub CLI and SSH authentication are
 verified; `origin` uses SSH and this repository bypasses the broken system SSH
-include with repository-local `ssh -F /dev/null`. Commit/push, open the draft
-PR, run PR CI, merge, tag/release `v0.4.0`, and install/verify it locally. Do not
-repeat the already passed read-only missing-WireGuard VM test unless connection
-behavior changes.
+include with repository-local `ssh -F /dev/null`. PR #15 is open and its full CI
+is green. Commit/push the final changelog/checkpoint update, wait for the final
+CI, merge, tag/release `v0.4.0`, and install/verify it locally. Do not repeat the
+already passed read-only missing-WireGuard VM test unless connection behavior
+changes.
 
 ## Publishing note
 
-`git push` works over the configured SSH remote. The connected GitHub app works
-for PR, CI and merge operations even though the local `gh` API token is invalid.
+`git push` works over the configured SSH remote. GitHub CLI is authenticated and
+the connected GitHub app works for PR and merge operations.
 
 ## Useful commands
 
