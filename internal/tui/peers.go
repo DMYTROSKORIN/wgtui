@@ -30,7 +30,10 @@ func (m *model) rebuildPeerTable() {
 	switch {
 	case available >= 145:
 		mode = "extended"
-		nameWidth := max(24, available-97)
+		// bubbles/table adds one cell of padding on each side of every
+		// column. Budget that frame explicitly: otherwise the seven-column
+		// table is six cells wider than the panel and overwrites its border.
+		nameWidth := max(24, available-103)
 		cols = []table.Column{
 			{Title: "Peer / alias", Width: nameWidth},
 			{Title: "VPN IP", Width: 16},
@@ -42,7 +45,7 @@ func (m *model) rebuildPeerTable() {
 		}
 	case available >= 108:
 		mode = "traffic"
-		nameWidth := max(24, available-69)
+		nameWidth := max(24, available-74)
 		cols = []table.Column{
 			{Title: "Peer / alias", Width: nameWidth},
 			{Title: "VPN IP", Width: 16},
@@ -53,7 +56,7 @@ func (m *model) rebuildPeerTable() {
 		}
 	case available >= 78:
 		mode = "standard"
-		nameWidth := max(24, available-47)
+		nameWidth := max(24, available-50)
 		cols = []table.Column{
 			{Title: "Peer / alias", Width: nameWidth},
 			{Title: "VPN IP", Width: 16},
@@ -61,7 +64,7 @@ func (m *model) rebuildPeerTable() {
 			{Title: "Last seen", Width: 14},
 		}
 	default:
-		nameWidth := max(18, available-30)
+		nameWidth := max(16, available-32)
 		cols = []table.Column{
 			{Title: "Peer / alias", Width: nameWidth},
 			{Title: "State", Width: 12},
@@ -177,10 +180,13 @@ func (m *model) viewPeersTab() string {
 
 func (m *model) viewPeerList() string {
 	switch {
+	case m.loading && !m.peersLoaded:
+		return warningStyle.Render("↻ Connecting to the server…") + "\n" +
+			dimStyle.Render("Peers will load automatically when the connection is ready.") + "\n"
 	case !m.peersLoaded:
 		return warningStyle.Render("↻ Loading peers from the server…") + "\n"
 	case m.peersErr != "":
-		return dangerStyle.Render("Error: "+m.peersErr) + "\n"
+		return dangerStyle.Render(wrapPlainText("Error: "+m.peersErr, m.peerTableAvailableWidth(), 4)) + "\n"
 	case len(m.peers) == 0:
 		return dimStyle.Render("No peers yet. Press n to add one.") + "\n"
 	default:
@@ -339,12 +345,17 @@ func wrapPlainText(value string, width, maxLines int) string {
 // and cached any SSH/sudo credentials in this session, so changing tabs
 // never drops out of the TUI to ask for another password.
 func (m *model) loadPeersFromSessionCmd() tea.Cmd {
+	if m.peersRefreshing {
+		return nil
+	}
+	m.peerRequestID++
+	requestID := m.peerRequestID
 	m.peersRefreshing = true
 	s := m.selected
 	sess := m.detailSession
 	if sess == nil || sess.closed {
 		return func() tea.Msg {
-			return peerListMsg{err: "server session is not connected; press r on Overview to reconnect"}
+			return peerListMsg{serverID: s.ID, requestID: requestID, err: "server session is not connected; return to Overview and press r to reconnect"}
 		}
 	}
 	localPeers := m.vault.ListPeers(s.ID)
@@ -360,16 +371,23 @@ func (m *model) loadPeersFromSessionCmd() tea.Cmd {
 		defer cancel()
 		res, err := sess.client.RunSudo(ctx, "wg show all dump", sess.prompts)
 		if err != nil {
-			return peerListMsg{err: fmt.Sprintf("wg show all dump: %v", err)}
+			return peerListMsg{serverID: s.ID, requestID: requestID, err: fmt.Sprintf("read WireGuard peers: %v", err)}
 		}
 		if res.ExitCode != 0 {
-			return peerListMsg{err: fmt.Sprintf("wg show all dump exited %d: %s", res.ExitCode, res.Stderr)}
+			detail := strings.TrimSpace(string(res.Stderr))
+			if detail == "" {
+				detail = "the remote command returned no diagnostic output"
+			}
+			if res.ExitCode == 255 {
+				return peerListMsg{serverID: s.ID, requestID: requestID, connectionLost: true, err: fmt.Sprintf("SSH connection was lost while reading peers: %s", detail)}
+			}
+			return peerListMsg{serverID: s.ID, requestID: requestID, err: fmt.Sprintf("cannot read WireGuard peers (exit %d): %s", res.ExitCode, detail)}
 		}
 		dump, err := wgconfig.ParseDump(string(res.Stdout))
 		if err != nil {
-			return peerListMsg{err: fmt.Sprintf("parse wg dump: %v", err)}
+			return peerListMsg{serverID: s.ID, requestID: requestID, err: fmt.Sprintf("parse WireGuard peer data: %v", err)}
 		}
-		return peerListMsg{peers: peerview.Reconcile(dump.Peers, localPeers, func(pk string) bool { return profileSet[pk] }, time.Now())}
+		return peerListMsg{serverID: s.ID, requestID: requestID, peers: peerview.Reconcile(dump.Peers, localPeers, func(pk string) bool { return profileSet[pk] }, time.Now())}
 	}
 }
 

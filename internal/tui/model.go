@@ -107,11 +107,12 @@ type model struct {
 	removeForm *huh.Form
 
 	// server detail
-	tab       detailTab
-	loading   bool
-	report    discovery.Report
-	state     discovery.State
-	detailErr string
+	tab             detailTab
+	loading         bool
+	report          discovery.Report
+	state           discovery.State
+	detailErr       string
+	detailRequestID uint64
 
 	// peers tab
 	peerTable       table.Model
@@ -119,6 +120,8 @@ type model struct {
 	peersLoaded     bool
 	peersRefreshing bool
 	peersErr        string
+	peerRequestID   uint64
+	peerReconnected bool
 	selectedPeer    peerview.Peer
 	actionOptions   []peerActionOption
 	actionCursor    int
@@ -229,6 +232,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch msg := msg.(type) {
 	case discoveryMsg:
+		if msg.serverID != m.selected.ID || msg.requestID != m.detailRequestID {
+			// A connection can finish after the user has left this server or
+			// started a newer refresh. Never install that stale session.
+			msg.sess.close()
+			return m, nil
+		}
 		m.loading = false
 		if msg.err != "" {
 			msg.sess.close()
@@ -239,12 +248,41 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.report = msg.report
 		m.state = msg.state
 		m.detailErr = msg.err
+		if m.tab == tabPeers && !m.peersLoaded {
+			if msg.err != "" {
+				m.peersLoaded = true
+				m.peersRefreshing = false
+				m.peersErr = "server connection failed: " + msg.err
+				return m, nil
+			}
+			return m, m.loadPeersFromSessionCmd()
+		}
 		return m, nil
 	case peerListMsg:
+		if msg.serverID != m.selected.ID || msg.requestID != m.peerRequestID {
+			return m, nil
+		}
+		if msg.connectionLost && !m.peerReconnected {
+			// A dead ControlMaster cannot recover by repeating a command on the
+			// same socket. Reconnect once, then let discovery automatically
+			// restart the peer load for the still-active Peers tab.
+			m.peerReconnected = true
+			m.detailSession.close()
+			m.detailSession = nil
+			m.loading = true
+			m.detailErr = ""
+			m.peersLoaded = false
+			m.peersRefreshing = false
+			m.peersErr = ""
+			return m, m.connectAndDiscoverCmd(m.selected)
+		}
 		m.peersLoaded = true
 		m.peersRefreshing = false
 		m.peersErr = msg.err
 		m.peers = msg.peers
+		if msg.err == "" {
+			m.peerReconnected = false
+		}
 		m.rebuildPeerTable()
 		return m, nil
 	case diagnoseMsg:
@@ -420,7 +458,12 @@ func (m *model) updateServerList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.detailErr = ""
 		m.report = discovery.Report{}
+		m.peerRequestID++
+		m.peers = nil
 		m.peersLoaded = false
+		m.peersRefreshing = false
+		m.peersErr = ""
+		m.peerReconnected = false
 		m.checksLoaded = false
 		return m, m.connectAndDiscoverCmd(m.selected)
 	}
@@ -430,6 +473,10 @@ func (m *model) updateServerList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "esc":
+		m.detailRequestID++
+		m.peerRequestID++
+		m.peersRefreshing = false
+		m.peerReconnected = false
 		m.detailSession.close()
 		m.detailSession = nil
 		m.screen = screenServerList
@@ -439,6 +486,9 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.tab = (m.tab + 1) % 3
 		m.diagnoseOffset = 0
 		if m.tab == tabPeers && !m.peersLoaded {
+			if m.loading {
+				return m, nil
+			}
 			return m, m.loadPeersFromSessionCmd()
 		}
 		if m.tab == tabDiagnose && !m.checksLoaded {
@@ -449,6 +499,7 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r", "f5":
 		switch m.tab {
 		case tabPeers:
+			m.peerReconnected = false
 			return m, m.loadPeersFromSessionCmd()
 		case tabDiagnose:
 			m.checks = diagnostics.BuildChecks(m.report, m.vault.ListPeers(m.selected.ID), time.Now())
@@ -507,6 +558,8 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // Dial/discovery need to interactively prompt for a host-key confirmation
 // or a password on the same terminal.
 func (m *model) connectAndDiscoverCmd(s domain.Server) tea.Cmd {
+	m.detailRequestID++
+	requestID := m.detailRequestID
 	return m.releaseTerminalAndRun(func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
@@ -515,10 +568,10 @@ func (m *model) connectAndDiscoverCmd(s domain.Server) tea.Cmd {
 		prompts := newTerminalPrompts(os.Stdout, target)
 		sess, err := dial(ctx, s, prompts)
 		if err != nil {
-			return discoveryMsg{err: fmt.Sprintf("connect: %v", err)}
+			return discoveryMsg{serverID: s.ID, requestID: requestID, err: fmt.Sprintf("connect: %v", err)}
 		}
 
 		report := discovery.Discover(ctx, sess.client, prompts)
-		return discoveryMsg{report: report, state: discovery.Classify(report), sess: sess}
+		return discoveryMsg{serverID: s.ID, requestID: requestID, report: report, state: discovery.Classify(report), sess: sess}
 	})
 }

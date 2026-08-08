@@ -1,18 +1,29 @@
 # Project checkpoint
 
-Last updated: 2026-08-08 00:59 CEST
+Last updated: 2026-08-08
 
-Active branch: `master`
+Active branch: `fix/peer-loading-recovery`
 
-Release target: `v0.2.0`
+Release target: `v0.2.1`
 
-Release status: **published and installed**
+Release status: **implementation verified; publishing pending**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Completed in the current release cycle
+
+- Fixed stale asynchronous discovery/peer results crossing server or refresh
+  boundaries by attaching server and request generation IDs.
+- Peers opened during initial discovery wait for the session and load
+  automatically instead of racing a missing connection.
+- SSH exit 255 now retains diagnostics and triggers one bounded automatic
+  reconnect; a second failure becomes a stable, actionable error.
+- Fixed the reported broken cyan panel lines: table calculations now include
+  renderer cell padding, so rows cannot overwrite the panel border.
+- Long remote error messages are sanitized, wrapped and bounded inside the
+  peer panel.
 
 - Replaced the ambiguous post-peer-creation screen with an explicit client
   setup menu: QR, private profile+QR export, secret config text, or finish.
@@ -52,6 +63,8 @@ with `git status --short --branch` and `git log -5 --oneline`.
   four Linux packages and valid checksums. Archives contain the binary, license,
   README, changelog, man page and three shell completions.
 - actionlint `v1.7.12`: pass for CI and release workflows.
+- New peer-loading and rendering regressions pass, including every wide
+  terminal width `135..260` and the reported screenshot-equivalent width.
 - PR #7 (`Release v0.2.0: polished responsive TUI`) passed both GitHub CI
   jobs, including build, vet, unit, race, Staticcheck, govulncheck and Semgrep.
 - PR #7 was merged into `master` as `682924c`.
@@ -69,10 +82,10 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-Release `v0.2.0` is complete; there is no unfinished implementation or
-publishing step. For new work, start from the latest `origin/master`, create a
-feature branch, and treat real-terminal feedback as a new scoped change. Do not
-repeat the completed responsive redesign or release process.
+The `v0.2.1` implementation and local verification are complete. Remaining
+steps are to commit and push this branch, pass PR CI, merge, tag `v0.2.1`, pass
+the release workflow, install the published artifact locally, and record the
+final release state here.
 
 ## Publishing note
 

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -81,6 +82,86 @@ func TestTabUsesExistingDetailSessionWithoutTerminalRelease(t *testing.T) {
 	peerMsg, ok := msg.(peerListMsg)
 	if !ok || peerMsg.err == "" {
 		t.Fatalf("command result = %#v, want a controlled disconnected-session error", msg)
+	}
+}
+
+func TestPeersTabWaitsForDiscoveryThenStartsCurrentServerLoad(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office"})
+	m.screen, m.tab, m.loading = screenServerDetail, tabOverview, true
+	m.selected = domain.Server{ID: "office"}
+	m.detailRequestID = 7
+
+	_, cmd := m.Update(key("tab"))
+	if cmd != nil || m.tab != tabPeers || m.peersRefreshing {
+		t.Fatalf("tab during discovery started premature load: tab=%v refreshing=%v cmd=%v", m.tab, m.peersRefreshing, cmd)
+	}
+
+	sess := &session{cleanup: func() {}}
+	_, cmd = m.Update(discoveryMsg{serverID: "office", requestID: 7, sess: sess})
+	if cmd == nil || !m.peersRefreshing || m.peersLoaded {
+		t.Fatalf("completed discovery did not start peer load: loaded=%v refreshing=%v cmd=%v", m.peersLoaded, m.peersRefreshing, cmd)
+	}
+}
+
+func TestStaleAsyncServerResultsAreIgnored(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "new"})
+	m.screen, m.tab = screenServerDetail, tabPeers
+	m.selected = domain.Server{ID: "new"}
+	m.detailRequestID, m.peerRequestID = 4, 9
+	m.peersRefreshing = true
+
+	closed := false
+	staleSession := &session{cleanup: func() { closed = true }}
+	m.Update(discoveryMsg{serverID: "old", requestID: 3, sess: staleSession, err: "old error"})
+	if !closed || m.detailErr != "" {
+		t.Fatalf("stale discovery applied or leaked its session: closed=%v detailErr=%q", closed, m.detailErr)
+	}
+
+	m.Update(peerListMsg{serverID: "new", requestID: 8, err: "old peer error"})
+	if m.peersLoaded || !m.peersRefreshing || m.peersErr != "" {
+		t.Fatalf("stale peer result changed current request: loaded=%v refreshing=%v err=%q", m.peersLoaded, m.peersRefreshing, m.peersErr)
+	}
+}
+
+func TestCurrentPeerFailureAlwaysEndsLoading(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office"})
+	m.screen, m.tab = screenServerDetail, tabPeers
+	m.selected = domain.Server{ID: "office"}
+	m.peerRequestID, m.peersRefreshing = 3, true
+	m.Update(peerListMsg{serverID: "office", requestID: 3, err: "SSH connection lost"})
+	if !m.peersLoaded || m.peersRefreshing || m.peersErr == "" {
+		t.Fatalf("current failure left loading state: loaded=%v refreshing=%v err=%q", m.peersLoaded, m.peersRefreshing, m.peersErr)
+	}
+	if got := m.viewPeerList(); !strings.Contains(got, "SSH connection lost") {
+		t.Fatalf("peer failure is not visible: %s", got)
+	}
+}
+
+func TestLostPeerConnectionReconnectsOnceThenShowsError(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office"})
+	m.screen, m.tab = screenServerDetail, tabPeers
+	m.selected = domain.Server{ID: "office"}
+	m.peerRequestID, m.peersRefreshing = 3, true
+	closed := false
+	m.detailSession = &session{cleanup: func() { closed = true }}
+
+	_, cmd := m.Update(peerListMsg{
+		serverID: "office", requestID: 3, connectionLost: true, err: "SSH connection was lost",
+	})
+	if cmd == nil || !closed || !m.loading || !m.peerReconnected || m.peersLoaded {
+		t.Fatalf("lost connection did not start one recovery: cmd=%v closed=%v loading=%v reconnected=%v loaded=%v", cmd, closed, m.loading, m.peerReconnected, m.peersLoaded)
+	}
+
+	// Simulate the peer command issued after that reconnect. A second loss
+	// must settle into an actionable error instead of reconnecting forever.
+	m.loading = false
+	m.peerRequestID = 4
+	m.peersRefreshing = true
+	_, cmd = m.Update(peerListMsg{
+		serverID: "office", requestID: 4, connectionLost: true, err: "SSH connection was lost again",
+	})
+	if cmd != nil || !m.peersLoaded || m.peersRefreshing || m.peersErr == "" {
+		t.Fatalf("second loss did not settle: cmd=%v loaded=%v refreshing=%v err=%q", cmd, m.peersLoaded, m.peersRefreshing, m.peersErr)
 	}
 }
 

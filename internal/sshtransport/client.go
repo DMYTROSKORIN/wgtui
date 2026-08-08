@@ -73,10 +73,10 @@ func newSSHCmd(ctx context.Context, args ...string) *exec.Cmd {
 
 func (c *Client) baseArgs() []string {
 	args := []string{
-		"-q", // suppress ssh's own client-side diagnostics (e.g. "Shared
-		// connection to <host> closed."), which would otherwise land in
-		// the same pty stream as real remote command output when a
-		// command is run through a multiplexed (-tt) channel.
+		// Keep genuine connection errors visible while suppressing routine
+		// multiplex/PTY chatter such as "Shared connection ... closed".
+		// `-q` hid both, leaving callers with an unactionable empty exit 255.
+		"-o", "LogLevel=ERROR",
 		"-o", "ControlMaster=auto",
 		"-o", "ControlPersist=600",
 		"-o", "ControlPath=" + c.controlPath,
@@ -169,7 +169,7 @@ func (c *Client) SudoValidate(ctx context.Context, prompts Prompts) error {
 func (c *Client) RunSudo(ctx context.Context, remoteCmd string, prompts Prompts) (Result, error) {
 	args := append(c.baseArgs(), "-tt", c.target.HostOrAlias, "sudo "+remoteCmd)
 	out, err := c.runInteractive(ctx, args, prompts)
-	res := Result{Stdout: normalizePTYCapture(out)}
+	res := interactiveResult(out, err)
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		res.ExitCode = exitErr.ExitCode()
 		return res, nil
@@ -195,12 +195,25 @@ func (c *Client) RunSudoScript(ctx context.Context, script string, prompts Promp
 	remoteCmd := "echo " + encoded + " | base64 -d | sudo bash"
 	args := append(c.baseArgs(), "-tt", c.target.HostOrAlias, remoteCmd)
 	out, err := c.runInteractive(ctx, args, prompts)
-	res := Result{Stdout: normalizePTYCapture(out)}
+	res := interactiveResult(out, err)
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		res.ExitCode = exitErr.ExitCode()
 		return res, nil
 	}
 	return res, err
+}
+
+// interactiveResult separates successful command output from diagnostics.
+// A PTY is a single combined stream, so failed ssh/sudo commands have no
+// distinct stderr pipe. Keeping their capture in Stderr prevents callers from
+// displaying an empty "exited 255:" message and preserves the actual SSH or
+// sudo explanation.
+func interactiveResult(out []byte, err error) Result {
+	normalized := normalizePTYCapture(out)
+	if err != nil {
+		return Result{Stderr: normalized}
+	}
+	return Result{Stdout: normalized}
 }
 
 // normalizePTYCapture undoes two artifacts introduced by driving a

@@ -81,7 +81,7 @@ func TestWidePeerDashboardUsesListAndInspectorWithoutServerSidebar(t *testing.T)
 }
 
 func TestPeerDashboardAdaptsWithoutWrappedCells(t *testing.T) {
-	wantColumns := map[int]int{78: 3, 120: 6, 166: 4, 240: 7}
+	wantColumns := map[int]int{64: 3, 78: 3, 120: 6, 166: 4, 204: 6, 240: 7}
 	for width, columnCount := range wantColumns {
 		t.Run(fmt.Sprintf("width_%d", width), func(t *testing.T) {
 			m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
@@ -107,10 +107,55 @@ func TestPeerDashboardAdaptsWithoutWrappedCells(t *testing.T) {
 				}
 			}
 			assertViewFits(t, view, width, 34)
+			assertPeerTableFits(t, m)
 			if strings.Contains(view, "│ Servers") {
 				t.Fatal("internal dashboard rendered Servers sidebar")
 			}
 		})
+	}
+}
+
+func assertPeerTableFits(t *testing.T, m *model) {
+	t.Helper()
+	limit := m.peerTableAvailableWidth()
+	for i, line := range strings.Split(m.peerTable.View(), "\n") {
+		if got := lipgloss.Width(line); got > limit {
+			t.Fatalf("peer table line %d is %d cells wide, panel content is %d:\n%s", i+1, got, limit, line)
+		}
+	}
+}
+
+func TestPeerTableFitsEveryWideTerminalWidth(t *testing.T) {
+	for width := 135; width <= 260; width++ {
+		m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
+		m.screen, m.tab = screenServerDetail, tabPeers
+		m.selected = domain.Server{ID: "office", DisplayName: "Office"}
+		m.peersLoaded = true
+		m.peers = []peerview.Peer{{
+			Name: "unusually long peer alias", VPNIP: "10.10.0.254/32", State: "never_connected",
+			Endpoint: "198.51.100.200:56806", RxBytes: 53 * 1024 * 1024, TxBytes: 124 * 1024 * 1024,
+		}}
+		m.Update(tea.WindowSizeMsg{Width: width, Height: 34})
+		m.rebuildPeerTable()
+		assertPeerTableFits(t, m)
+		assertViewFits(t, m.View(), width, 34)
+	}
+}
+
+func TestLongPeerErrorCannotOverwritePanelBorder(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
+	m.screen, m.tab = screenServerDetail, tabPeers
+	m.selected = domain.Server{ID: "office", DisplayName: "Office"}
+	m.peersLoaded = true
+	m.peersErr = strings.Repeat("ssh connection diagnostic with unsafe width ", 12)
+	for _, width := range []int{64, 90, 135, 204, 240} {
+		m.Update(tea.WindowSizeMsg{Width: width, Height: 34})
+		for i, line := range strings.Split(m.viewPeerList(), "\n") {
+			if got, limit := lipgloss.Width(line), m.peerTableAvailableWidth(); got > limit {
+				t.Fatalf("width %d error line %d is %d cells, panel allows %d", width, i+1, got, limit)
+			}
+		}
+		assertViewFits(t, m.View(), width, 34)
 	}
 }
 
