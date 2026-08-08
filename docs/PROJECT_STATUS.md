@@ -6,16 +6,13 @@ Active branch: `master`
 
 Release target: `v0.5.0`
 
-Release status: **releasing now** - the top-menu/bottom-bar redesign from
-`docs/UI_MENU_REDESIGN_HANDOFF.md` is implemented, tested and merged into
-`master`; this checkpoint is being written as part of tagging and publishing
-`v0.5.0`
+Release status: **v0.5.0 published, installed and complete**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
 
-## Completed since `v0.4.0`
+## Completed in the `v0.5.0` release cycle
 
 - Implemented `docs/UI_MENU_REDESIGN_HANDOFF.md` in full: the top menu
   (`Alt+letter`) and the bottom action bar (plain letter) are now two
@@ -51,6 +48,18 @@ with `git status --short --branch` and `git log -5 --oneline`.
   vulnerabilities), `go test ./...` and `go test -race ./...`,
   `CGO_ENABLED=0` Darwin amd64/arm64 cross-builds, and `goreleaser check` all
   pass on the changed tree.
+- Pushed `master` directly (commits `5fc41a9`, `4d3de40`); the pre-push hook's
+  Semgrep scan (101 rules, 114 files) was clean both times.
+- Annotated tag `v0.5.0` points at `4d3de40` and is pushed to origin. Release
+  workflow run `31280917291` passed all three jobs (`semgrep`, `validate`,
+  `goreleaser`).
+- GitHub Release `v0.5.0` is published (not draft/prerelease) with
+  `checksums.txt`, four Linux/macOS archives, two `.deb` files and two `.rpm`
+  files.
+- `scripts/install.sh v0.5.0` verified the published Linux amd64 archive and
+  installed `wgtui 0.5.0` at `~/.local/bin/wgtui` with mode `0755`.
+- Installed `v0.5.0` binary SHA-256:
+  `e859b366639c36948b26a893a18554922a8f0d4a8c8c97a1e87152b80abeb6c4`.
 
 ## Completed in the `v0.4.0` release cycle
 
@@ -230,12 +239,11 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-The menu redesign from `docs/UI_MENU_REDESIGN_HANDOFF.md` is implemented,
-tested and pushed to `master`, but no version bump, tag or GitHub release has
-been cut for it yet - that is the next step if a release is wanted. Do not
-repeat the already-passed live install test against `192.168.122.245` unless
-install/discovery behavior changes; that VM currently has WireGuard installed
-with no interface configured.
+`v0.5.0` is complete, published and installed; there is no pending release
+work. Future product work should start from a clean synchronized `master`. Do
+not repeat the already-passed live install test against `192.168.122.245`
+unless install/discovery behavior changes; that VM currently has WireGuard
+installed with no interface configured.
 
 ## Publishing note
 
