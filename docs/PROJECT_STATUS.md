@@ -1,18 +1,28 @@
 # Project checkpoint
 
-Last updated: 2026-08-08
+Last updated: 2026-08-08 12:10 CEST
 
-Active branch: `fix/wide-peer-panel-alignment`
+Active branch: `feat/commander-ui-v0.3.0`
 
-Release target: `v0.2.2`
+Release target: `v0.3.0`
 
-Release status: **visual refinement in progress**
+Release status: **Commander UI implementation in progress**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Completed in the current release cycle
+
+- Published and locally installed `v0.2.2`; the release contains Darwin and
+  Linux archives for amd64/arm64 plus Linux `.deb`/`.rpm` packages.
+- Installed `v0.2.2` binary SHA-256:
+  `31a31434fd01f8ef91b1d4c9b3573dd66321457f42285b0da8ac56c456acbf8a`.
+- User approved a pure-Go Commander UI direction inspired by Midnight
+  Commander; S-Lang/CGO migration is explicitly out of scope to preserve macOS
+  compatibility and the tested Go business layer.
+- Added `docs/COMMANDER_UI.md` as the menu, F-key, two-pane and cross-platform
+  behavior contract for `v0.3.0`.
 
 - Reviewed the new `3063×1335` screenshot and reproduced its effective
   wide-layout sizes in the text renderer.
@@ -105,9 +115,10 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-The `v0.2.2` visual refinement is implemented locally. Continue with the full
-test/static-analysis/package pipeline, publish through PR CI, tag and release,
-install the published artifact, then record the final state here.
+Release `v0.2.2` is complete. Continue `v0.3.0` from the Commander UI contract:
+implement the persistent top menu and contextual F1–F10 bar first, then adapt
+the two-pane screens and add interaction/layout/macOS build regressions before
+the release cycle.
 
 ## Publishing note
 
