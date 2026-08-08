@@ -14,13 +14,14 @@ func (m *model) updateCommanderMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if event.Y == 0 && m.commanderAvailable() {
-		for i := range commanderCategories {
-			start := commanderCategoryStart(i)
-			end := start + len(commanderCategories[i]) + 2
-			if event.X >= start && event.X < end {
+		start := 0
+		for i, category := range commanderCategories {
+			width := commanderCategoryWidth(category)
+			if event.X >= start && event.X < start+width {
 				m.menuOpen, m.menuCategory, m.menuCursor = true, i, 0
 				return m, nil
 			}
+			start += width
 		}
 	}
 
@@ -48,13 +49,10 @@ func (m *model) updateCommanderMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if len(hints) == 0 {
 			return m, nil
 		}
-		base, remainder, start := m.width/len(hints), m.width%len(hints), 0
-		for _, hint := range hints {
-			width := base
-			if remainder > 0 {
-				width++
-				remainder--
-			}
+		widths := commanderSegmentWidths(len(hints), m.width)
+		start := 0
+		for i, hint := range hints {
+			width := widths[i]
 			if event.X >= start && event.X < start+width {
 				if !hint.enabled {
 					return m, nil

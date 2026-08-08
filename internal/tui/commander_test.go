@@ -152,7 +152,7 @@ func TestStatusBannerKeepsActionBarOnLastClickableRow(t *testing.T) {
 		t.Fatalf("view with status has %d rows, want terminal height %d", len(lines), m.height)
 	}
 	last := ansi.Strip(lines[len(lines)-1])
-	if !strings.Contains(last, "OOpen") || !strings.Contains(last, "QQuit") {
+	if !strings.Contains(last, "Open") || !strings.Contains(last, "Quit") {
 		t.Fatalf("last row is not the action bar: %q", last)
 	}
 	if !strings.Contains(ansi.Strip(lines[len(lines)-2]), "Connected successfully") {
@@ -188,7 +188,7 @@ func TestCommanderActionBarAlwaysFitsAndShowsLetterAccelerators(t *testing.T) {
 		if strings.Contains(plain, "F1") || strings.Contains(plain, "F10") {
 			t.Fatalf("width %d still exposes function keys: %q", width, plain)
 		}
-		for _, key := range []string{"?", "N", "O", "E", "X", "P", "M", "Q"} {
+		for _, key := range []string{"?", "N", "O", "E", "R", "P", "M", "Q"} {
 			if !strings.Contains(plain, key) {
 				t.Fatalf("width %d omits %s: %q", width, key, plain)
 			}

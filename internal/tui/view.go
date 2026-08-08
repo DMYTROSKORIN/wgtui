@@ -338,6 +338,8 @@ func clamp(v, low, high int) int {
 func (m *model) viewHelp() string {
 	if layoutModeFor(m.width, m.height) == layoutCompact {
 		text := titleStyle.Render("Keyboard help") + "\n\n" +
+			dimStyle.Render("Alt+letter opens a top menu. Plain letter runs a bottom action.") + "\n\n" +
+			keyHint("Alt+S/P/V/T/H", "Top menu") + "\n" +
 			keyHint("?", "Help") + "   " + keyHint("N", "New") + "\n" +
 			keyHint("O", "Open") + "   " + keyHint("A", "Peer actions") + "\n" +
 			keyHint("R", "Refresh") + "   " + keyHint("D", "Diagnose") + "\n" +
@@ -346,14 +348,19 @@ func (m *model) viewHelp() string {
 		return appHeader("Help") + "\n" + fullPanel(m, text) + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
 	}
 	text := titleStyle.Render("Keyboard help") + "\n\n" +
-		"?           Help                 C   Configure\n" +
-		"N           New server/peer      D   Diagnose\n" +
-		"O / Enter   Open selected        X   Remove/revoke\n" +
-		"E           Edit server          M   Command menu\n" +
-		"R           Refresh              Q   Quit safely\n" +
+		textStyle.Render("Two separate accelerator systems, never the same key:") + "\n" +
+		"  Alt+letter   top menu — Server(S) Peer(P) View(V) Tools(T) Help(H)\n" +
+		"  letter       bottom action — the highlighted letter inside its label\n\n" +
+		textStyle.Render("Server list bottom bar") + "\n" +
+		"  N New    O Open    E Edit    R Remove    P Password\n\n" +
+		textStyle.Render("Server detail bottom bar") + "\n" +
+		"  N New peer   A Actions   O Revoke (Peers tab)   R Refresh\n" +
+		"  I Install (if missing)   C Configure   D Diagnose   B Back\n\n" +
 		"Arrows/j/k  Move selection       Tab Switch dashboard tab\n" +
-		"Enter       Open / continue      Esc Close dialog or go back\n\n" +
-		dimStyle.Render("Highlighted letters in the menu and bottom bar are direct shortcuts. Mouse clicks work too.") + "\n" +
+		"Enter       Open / continue      Esc Close dialog or go back\n" +
+		"M           Command menu         Q Quit safely\n\n" +
+		dimStyle.Render("The same letter can mean different things on different screens - e.g. plain P changes the vault password on the server list, while Alt+P opens the Peer menu everywhere.") + "\n" +
+		dimStyle.Render("Mouse clicks on either bar work the same as their keys.") + "\n" +
 		dimStyle.Render("Network and destructive operations always show their own status or confirmation.")
 	return appHeader("Help") + "\n" + fullPanel(m, text) + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
 }

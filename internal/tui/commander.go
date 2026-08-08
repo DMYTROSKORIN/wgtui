@@ -43,7 +43,31 @@ type commanderMenuItem struct {
 	reason      string
 }
 
-var commanderCategories = []string{"Server", "Peer", "View", "Tools", "Help"}
+// commanderCategory is a top-menu navigation entry. key is stored
+// explicitly rather than derived from label[0] - per
+// docs/UI_MENU_REDESIGN_HANDOFF.md requirement 2, a category's Alt+letter
+// accelerator must never be computed implicitly from the label, so
+// relabeling never silently changes what Alt+letter opens.
+type commanderCategory struct {
+	label string
+	key   string
+}
+
+var commanderCategories = []commanderCategory{
+	{label: "Server", key: "S"},
+	{label: "Peer", key: "P"},
+	{label: "View", key: "V"},
+	{label: "Tools", key: "T"},
+	{label: "Help", key: "H"},
+}
+
+// commanderCategoryWidth is the exact cell width renderCommanderCategory
+// draws a category in - one leading and one trailing space around the
+// label, no separator glyph. Shared by the renderer, commanderCategoryStart
+// and the mouse hit-test so all three can never disagree about geometry.
+func commanderCategoryWidth(c commanderCategory) int {
+	return len(c.label) + 2
+}
 
 func (m *model) commanderAvailable() bool {
 	return m.screen == screenServerList || m.screen == screenServerDetail || m.screen == screenPeerActionMenu || m.screen == screenPeerReveal || m.screen == screenHelp
@@ -373,7 +397,7 @@ func (m *model) handleCommanderAccelerator(value string) (tea.Cmd, bool) {
 			return m.dispatchCommanderAction(actionOpenServer), true
 		case "e":
 			return m.dispatchCommanderAction(actionEditServer), true
-		case "x":
+		case "r":
 			return m.dispatchCommanderAction(actionRemoveServer), true
 		case "p":
 			return m.dispatchCommanderAction(actionChangePassword), true
@@ -397,7 +421,7 @@ func (m *model) handleCommanderAccelerator(value string) (tea.Cmd, bool) {
 			if m.tab == tabPeers {
 				return m.dispatchCommanderAction(actionPeerActions), true
 			}
-		case "x":
+		case "o":
 			if m.tab == tabPeers {
 				return m.dispatchCommanderAction(actionPeerRevoke), true
 			}
@@ -406,20 +430,44 @@ func (m *model) handleCommanderAccelerator(value string) (tea.Cmd, bool) {
 	return nil, false
 }
 
-func (m *model) viewCommanderMenuBar() string {
-	parts := make([]string, 0, len(commanderCategories)*2)
-	for i, category := range commanderCategories {
-		active := (m.menuOpen && i == m.menuCategory) ||
-			(!m.menuOpen && i == 0 && m.screen == screenServerList) ||
-			(!m.menuOpen && i == 1 && m.screen == screenServerDetail && m.tab == tabPeers) ||
-			(!m.menuOpen && i == 2 && m.screen == screenServerDetail && m.tab != tabPeers)
-		parts = append(parts, renderChromeAccelerator(strings.ToUpper(category[:1]), category, active))
-		if i < len(commanderCategories)-1 {
-			parts = append(parts, chromeStyle.Render("│"))
-		}
+// activeCommanderCategoryIndex returns the top-menu category that should
+// render with the active (open) background, or -1 when the menu is closed.
+// Which screen or tab is currently showing is a separate fact from this -
+// the top menu stays calm until the user opens it
+// (docs/UI_MENU_REDESIGN_HANDOFF.md: "selected navigation state и open menu
+// state — разные состояния"). Kept separate from rendering so the decision
+// is unit-testable without depending on ANSI color support.
+func (m *model) activeCommanderCategoryIndex() int {
+	if !m.menuOpen {
+		return -1
 	}
-	bar := strings.Join(parts, "")
-	return chromeStyle.Width(max(0, m.width)).Render(ansi.Truncate(bar, max(0, m.width), ""))
+	return m.menuCategory
+}
+
+func (m *model) viewCommanderMenuBar() string {
+	var b strings.Builder
+	used := 0
+	active := m.activeCommanderCategoryIndex()
+	for i, category := range commanderCategories {
+		b.WriteString(renderCommanderCategory(category, i == active))
+		used += commanderCategoryWidth(category)
+	}
+	if used < m.width {
+		b.WriteString(chromeCalmStyle.Render(strings.Repeat(" ", m.width-used)))
+	}
+	return ansi.Truncate(b.String(), max(0, m.width), "")
+}
+
+// renderCommanderCategory draws one top-menu category with even padding on
+// both sides and no separator glyph - adjacent categories are told apart
+// only by their own text, matching Midnight Commander's calm top row.
+func renderCommanderCategory(c commanderCategory, active bool) string {
+	base, accent := chromeCalmStyle, chromeCalmAccentStyle
+	if active {
+		base, accent = chromeActiveStyle, chromeActiveAccentStyle
+	}
+	label := " " + c.label + " "
+	return renderAcceleratedLabel(label, c.key, lipgloss.Width(label), base, accent)
 }
 
 func (m *model) viewCommanderMenu() string {
@@ -483,28 +531,38 @@ type commanderHint struct {
 
 func (m *model) commanderActionBar() string {
 	hints := m.commanderActionHints()
-	if m.width <= 0 {
+	if m.width <= 0 || len(hints) == 0 {
 		return ""
 	}
-	base, remainder := m.width/len(hints), m.width%len(hints)
+	widths := commanderSegmentWidths(len(hints), m.width)
 	var b strings.Builder
 	for i, hint := range hints {
-		width := base
-		if i < remainder {
-			width++
-		}
-		keyWidth := min(width, lipgloss.Width(hint.key)+1)
-		keyStyle, labelStyle := chromeKeyStyle, chromeLabelStyle
-		if !hint.enabled {
-			keyStyle = keyStyle.Foreground(colorMuted)
-			labelStyle = labelStyle.Foreground(colorMuted)
-		}
-		b.WriteString(keyStyle.Width(keyWidth).Render(" " + hint.key))
-		labelWidth := max(0, width-keyWidth-1)
-		b.WriteString(labelStyle.Width(labelWidth).Render(truncateCell(hint.label, labelWidth)))
-		b.WriteString(lipgloss.NewStyle().Background(colorChromeKey).Width(min(1, width-keyWidth-labelWidth)).Render(" "))
+		b.WriteString(renderCommanderHintSegment(hint, widths[i]))
 	}
 	return b.String()
+}
+
+// renderCommanderHintSegment draws one bottom-bar action as a single
+// continuous surface: the accelerator letter is highlighted inside the
+// label text, never printed as a separate key cell
+// (docs/UI_MENU_REDESIGN_HANDOFF.md: "Нижняя строка не содержит шаблонов
+// вида `P Password`"). A one-column dark gap - not a `│` - separates
+// segments, mirroring Midnight Commander's bottom row.
+func renderCommanderHintSegment(hint commanderHint, width int) string {
+	base, accent := chromeLabelStyle, chromeAccentStyle
+	if !hint.enabled {
+		base, accent = chromeMutedStyle, chromeMutedStyle
+	}
+	gap := 0
+	if width > 1 {
+		gap = 1
+	}
+	segWidth := width - gap
+	seg := renderAcceleratedLabel(" "+hint.label, hint.key, segWidth, base, accent)
+	if gap > 0 {
+		seg += lipgloss.NewStyle().Background(colorChromeKey).Render(" ")
+	}
+	return seg
 }
 
 func (m *model) commanderActionHints() []commanderHint {
@@ -516,7 +574,7 @@ func (m *model) commanderActionHints() []commanderHint {
 		peerReady := !m.loading && m.detailErr == "" && m.report.WireGuard.WgPresent && len(m.report.WireGuard.Interfaces) > 0
 		hints = append(hints, commanderHint{"N", "New peer", actionNewPeer, peerReady})
 		if m.tab == tabPeers {
-			hints = append(hints, commanderHint{"A", "Actions", actionPeerActions, len(m.peers) > 0}, commanderHint{"X", "Revoke", actionPeerRevoke, len(m.peers) > 0})
+			hints = append(hints, commanderHint{"A", "Actions", actionPeerActions, len(m.peers) > 0}, commanderHint{"O", "Revoke", actionPeerRevoke, len(m.peers) > 0})
 		}
 		hints = append(hints, commanderHint{"R", "Refresh", actionRefresh, true})
 		if m.tab == tabOverview && !m.report.WireGuard.WgPresent {
@@ -525,29 +583,19 @@ func (m *model) commanderActionHints() []commanderHint {
 		hints = append(hints, commanderHint{"C", "Configure", actionConfigureServer, !m.loading && m.detailErr == "" && m.report.WireGuard.WgPresent}, commanderHint{"D", "Diagnose", actionShowDiagnose, true}, commanderHint{"B", "Back", actionShowServerList, true})
 	} else if m.screen == screenServerList {
 		hasServer := len(m.vault.Registry.Servers) > 0
-		hints = append(hints, commanderHint{"N", "New", actionNewServer, true}, commanderHint{"O", "Open", actionOpenServer, hasServer}, commanderHint{"E", "Edit", actionEditServer, hasServer}, commanderHint{"X", "Remove", actionRemoveServer, hasServer}, commanderHint{"P", "Password", actionChangePassword, true})
+		hints = append(hints, commanderHint{"N", "New", actionNewServer, true}, commanderHint{"O", "Open", actionOpenServer, hasServer}, commanderHint{"E", "Edit", actionEditServer, hasServer}, commanderHint{"R", "Remove", actionRemoveServer, hasServer}, commanderHint{"P", "Password", actionChangePassword, true})
 	}
 	return append(hints, commanderHint{"M", "Menu", "", true}, commanderHint{"Q", "Quit", actionQuit, true})
 }
 
-func renderChromeAccelerator(key, label string, active bool) string {
-	background := colorChrome
-	if active {
-		background = colorChromeKey
-	}
-	keyStyle := lipgloss.NewStyle().Bold(true).Underline(true).Foreground(colorWarning).Background(background)
-	labelStyle := lipgloss.NewStyle().Foreground(colorChromeInk).Background(background)
-	rest := strings.TrimPrefix(label, strings.ToUpper(key))
-	if rest == label && len(label) > 0 {
-		rest = label[1:]
-	}
-	return labelStyle.Render(" ") + keyStyle.Render(key) + labelStyle.Render(rest+" ")
-}
-
+// commanderCategoryStart is the top-menu bar's x-coordinate where category
+// starts - shared by the renderer (via commanderCategoryWidth) and the
+// mouse hit-test in mouse.go, so a click always opens the category it
+// visually lands on.
 func commanderCategoryStart(category int) int {
 	start := 0
 	for i := 0; i < category && i < len(commanderCategories); i++ {
-		start += len(commanderCategories[i]) + 3
+		start += commanderCategoryWidth(commanderCategories[i])
 	}
 	return start
 }

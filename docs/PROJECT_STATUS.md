@@ -1,18 +1,57 @@
 # Project checkpoint
 
-Last updated: 2026-08-08 19:43 CEST
+Last updated: 2026-08-09
 
 Active branch: `master`
 
-Release target: `v0.4.0`
+Release target: next release after `v0.4.0` (unversioned as of this checkpoint)
 
-Release status: **v0.4.0 published, installed and complete**
+Release status: **v0.4.0 published, installed and complete; the top-menu/bottom-bar
+redesign from `docs/UI_MENU_REDESIGN_HANDOFF.md` is implemented, tested and merged
+into `master`, but not yet tagged or released**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
 
-## Completed in the current release cycle
+## Completed since `v0.4.0`
+
+- Implemented `docs/UI_MENU_REDESIGN_HANDOFF.md` in full: the top menu
+  (`Alt+letter`) and the bottom action bar (plain letter) are now two
+  explicitly separate accelerator systems that never promise the same key
+  twice. Removed the `│` separators from the top row; its active/dark
+  background now shows only while a dropdown is actually open, never merely
+  because a related screen is showing. Bottom-bar accelerator letters are
+  highlighted inside their own label (`Remove`, `revOke`) instead of a
+  separate key cell; `Remove` moved from `X` to `R` and `Revoke` from `X` to
+  `O` so both are letters that actually appear in their labels. Added a
+  shared `renderAcceleratedLabel` renderer and shared width-geometry helpers
+  so the mouse hit-test can never disagree with what was rendered.
+- Added acceptance tests for the redesign contract (`internal/tui/menu_redesign_test.go`):
+  no `│` at any width, active background only while the matching dropdown is
+  open, every non-symbol accelerator letter is present inside its own label,
+  per-panel accelerator uniqueness, and mouse click / keyboard accelerator
+  dispatching the same action.
+- Verified the new chrome live in a tmux session at `64×18` and `100×30`
+  against an isolated `HOME`, including inspecting raw ANSI output to confirm
+  the active category actually renders with the dark background and calm
+  categories render with the cyan one.
+- Ran the full missing-WireGuard install flow for real (not read-only) against
+  the disposable VM `192.168.122.245` (Ubuntu 24.04) through the actual TUI:
+  discovery correctly classified `wireguard_missing`, the confirmation screen
+  showed the exact `apt-get update` / `apt-get install -y wireguard` plan,
+  applying it after the sudo-password prompt succeeded, `VerifyInstalled`
+  passed, and the server reclassified to `tools_no_interfaces` with the
+  bottom bar switching from `Install` to `Configure`. Independently confirmed
+  over a second SSH session that `wireguard`/`wireguard-tools` are installed
+  via `dpkg -l` and `wg --version`. The VM now has WireGuard installed but no
+  interface configured; configuring an interface was out of this task's scope.
+- `go build`, `go vet`, `staticcheck v0.7.0`, `govulncheck v1.6.0` (0 called
+  vulnerabilities), `go test ./...` and `go test -race ./...`,
+  `CGO_ENABLED=0` Darwin amd64/arm64 cross-builds, and `goreleaser check` all
+  pass on the changed tree.
+
+## Completed in the `v0.4.0` release cycle
 
 - Reviewed `Screenshot_20260808_180214.png` and the matching Midnight
   Commander screenshot. Confirmed that the top and bottom chrome needed solid
@@ -190,10 +229,12 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-`v0.4.0` is complete, published and installed; there is no pending release
-work. Future product work should start from a clean synchronized `master`. Do
-not repeat the already passed read-only missing-WireGuard VM test unless
-connection behavior changes.
+The menu redesign from `docs/UI_MENU_REDESIGN_HANDOFF.md` is implemented,
+tested and pushed to `master`, but no version bump, tag or GitHub release has
+been cut for it yet - that is the next step if a release is wanted. Do not
+repeat the already-passed live install test against `192.168.122.245` unless
+install/discovery behavior changes; that VM currently has WireGuard installed
+with no interface configured.
 
 ## Publishing note
 

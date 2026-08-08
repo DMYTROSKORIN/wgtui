@@ -48,11 +48,25 @@ var (
 	tabActiveStyle   = lipgloss.NewStyle().Bold(true).Foreground(colorAccent).Underline(true)
 	tabInactiveStyle = lipgloss.NewStyle().Foreground(colorMuted)
 
-	footerStyle      = lipgloss.NewStyle().Foreground(colorMuted)
-	keyStyle         = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	chromeStyle      = lipgloss.NewStyle().Bold(true).Foreground(colorChromeInk).Background(colorChrome)
-	chromeKeyStyle   = lipgloss.NewStyle().Bold(true).Foreground(colorChromeInk).Background(colorChromeKey)
-	chromeLabelStyle = lipgloss.NewStyle().Foreground(colorChromeInk).Background(colorChromeAlt)
+	footerStyle = lipgloss.NewStyle().Foreground(colorMuted)
+	keyStyle    = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	chromeStyle = lipgloss.NewStyle().Bold(true).Foreground(colorChromeInk).Background(colorChrome)
+
+	// Top menu: calm when closed, active (open dropdown) gets the dark
+	// background - two distinct states, never blended, per
+	// docs/UI_MENU_REDESIGN_HANDOFF.md's "верхнее меню спокойно, пока
+	// пользователь с ним не взаимодействует".
+	chromeCalmStyle         = lipgloss.NewStyle().Foreground(colorChromeKey).Background(colorChrome)
+	chromeCalmAccentStyle   = lipgloss.NewStyle().Bold(true).Underline(true).Foreground(colorWarning).Background(colorChrome)
+	chromeActiveStyle       = lipgloss.NewStyle().Foreground(colorChromeInk).Background(colorChromeKey)
+	chromeActiveAccentStyle = lipgloss.NewStyle().Bold(true).Underline(true).Foreground(colorWarning).Background(colorChromeKey)
+
+	// Bottom action bar: one continuous background per segment - the
+	// highlighted accelerator letter lives inside the label text itself,
+	// never as a separate key cell.
+	chromeLabelStyle  = lipgloss.NewStyle().Foreground(colorChromeInk).Background(colorChromeAlt)
+	chromeAccentStyle = lipgloss.NewStyle().Bold(true).Underline(true).Foreground(colorWarning).Background(colorChromeAlt)
+	chromeMutedStyle  = lipgloss.NewStyle().Foreground(colorMuted).Background(colorChromeAlt)
 )
 
 // formTheme is the one huh.Theme every form/confirm/select in the app

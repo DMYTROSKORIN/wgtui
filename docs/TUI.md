@@ -85,30 +85,45 @@ existing profile's DNS and supplies the Google default when the old profile had 
 
 ## Keyboard contract
 
-| Key | Meaning |
-| --- | --- |
-| `?` | Show keyboard help |
-| `N` | Add a server or peer in the current context |
-| `O` / `Enter` | Open the selected server |
-| `E` | Edit the selected server |
-| `R` | Explicitly refresh the active view |
-| `C` | Configure the open server when applicable |
-| `D` | Open diagnostics |
-| `A` | Open selected peer actions |
-| `X` | Start the confirmed remove/revoke flow |
-| `M` | Open the Server / Peer / View / Tools / Help menu |
-| `Q` / `Ctrl+C` | Close sessions, restore the terminal and quit safely |
-| `Tab` | Switch dashboard tabs; never request credentials by itself |
-| `Esc` | Cancel the current dialog or return one level |
+Two accelerator systems exist side by side and never share a key:
+
+- **`Alt+letter`** opens a top-menu category - `Alt+S` Server, `Alt+P` Peer,
+  `Alt+V` View, `Alt+T` Tools, `Alt+H` Help. This never depends on which
+  screen is open.
+- **A plain letter** runs a bottom-bar action for the *current* screen. The
+  same letter can mean different things on different screens - e.g. plain
+  `P` changes the vault password on the server list, while `Alt+P` opens the
+  Peer menu everywhere.
+
+| Key | Screen | Meaning |
+| --- | --- | --- |
+| `?` | any | Show keyboard help |
+| `N` | any | Add a server or peer in the current context |
+| `O` / `Enter` | server list | Open the selected server |
+| `E` | server list | Edit the selected server |
+| `R` | server list | Remove the selected server (confirmation required) |
+| `P` | server list | Change the vault password |
+| `R` | server detail | Explicitly refresh the active view |
+| `I` | server detail | Install WireGuard (only when it is missing) |
+| `C` | server detail | Configure the open server when applicable |
+| `D` | server detail | Open diagnostics |
+| `A` | Peers tab | Open selected peer actions |
+| `O` | Peers tab | Start the confirmed peer revoke flow |
+| `B` | server detail | Back to the server list |
+| `M` | any | Open the Server / Peer / View / Tools / Help menu |
+| `Q` / `Ctrl+C` | any | Close sessions, restore the terminal and quit safely |
+| `Tab` | any | Switch dashboard tabs; never request credentials by itself |
+| `Esc` | any | Cancel the current dialog or return one level |
 
 `Ctrl+C` is handled before any embedded form sees it, so its meaning does not
 change based on focus. Destructive operations cannot use it as confirmation.
 
-The highlighted letter in each top-menu, dropdown and bottom-bar item is its
-accelerator, following the same discoverable convention as btop. Keyboard and
-mouse routes dispatch the same action. Unavailable actions stay visible and
-explain the context they require. Destructive actions only open an explicit
-review or confirmation flow. F-keys remain undocumented compatibility aliases.
+The highlighted letter in each bottom-bar item sits inside the label itself
+(`Remove`, not a separate `X` cell next to it), and every accelerator on a
+given bar is unique regardless of case. Keyboard and mouse routes dispatch
+the same action. Unavailable actions stay visible and explain the context
+they require. Destructive actions only open an explicit review or
+confirmation flow. F-keys remain undocumented compatibility aliases.
 
 ## Preshared keys
 

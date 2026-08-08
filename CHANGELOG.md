@@ -3,6 +3,33 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [Unreleased]
+
+### Changed
+
+- Top menu and bottom action bar are now two clearly separate accelerator
+  systems, per `docs/UI_MENU_REDESIGN_HANDOFF.md`: `Alt+letter` always opens
+  a top-menu category regardless of screen, while a plain letter always runs
+  a bottom-bar action for the current screen only - the same letter can mean
+  different things on different screens without conflict (e.g. plain `P`
+  changes the vault password on the server list, `Alt+P` opens the Peer menu
+  everywhere).
+- Removed the `│` separators from the top menu row; adjacent categories are
+  told apart by even padding alone.
+- The top menu's active (dark) background now shows only while its dropdown
+  is actually open, never just because a related screen or tab happens to be
+  showing.
+- Bottom-bar accelerator letters are now highlighted inside their own label
+  text (`Remove`, `revOke`) instead of being printed as a separate key cell
+  next to the label (`X Remove`). `Remove` moved from `X` to `R` and `Revoke`
+  from `X` to `O` so both accelerators are letters that actually appear in
+  their labels.
+- Added a single ANSI/Unicode-safe `renderAcceleratedLabel` renderer shared
+  by both the top menu and the bottom bar, and shared width-geometry helpers
+  so mouse hit-testing can never disagree with what was rendered.
+- The keyboard help screen now explains the `Alt+letter` vs plain-letter
+  contract explicitly, with per-screen bottom-bar tables.
+
 ## [0.4.0] - 2026-08-08
 
 ### Added

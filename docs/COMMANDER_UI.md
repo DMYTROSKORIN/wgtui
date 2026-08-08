@@ -18,41 +18,78 @@ not a dependency on S-Lang or curses.
 - Color reinforces state but text, symbols and selection remain sufficient in
   monochrome terminals.
 
+## Two accelerator systems
+
+The top menu and the bottom bar look related but answer different questions,
+and they must never make the same letter promise two different things:
+
+- **Top menu (`Alt+letter`)** - "where do I navigate?" Calm and unobtrusive
+  until opened; the accelerator is `Alt+` the category's first letter, stored
+  explicitly per category rather than derived from its label.
+- **Bottom bar (plain `letter`)** - "what can I do on this screen right now?"
+  High-contrast and always visible; the accelerator is a plain letter that is
+  always a real letter *inside* the action's own label (e.g. the `R` in
+  `Remove`, the `O` in `revOke`) - never a separate key cell printed next to
+  the label.
+
+Because the two systems use different modifiers, the same letter can mean two
+different things without conflict: `Alt+P` always opens the Peer menu, while
+plain `P` on the server list changes the vault password.
+
 ## Top menu
 
 The persistent menu categories are:
 
-| Menu | Responsibilities |
-| --- | --- |
-| Server | Open, add, edit, remove, install WireGuard, configure, refresh |
-| Peer | Add, inspect/actions, QR, export, pause/resume, rotate, revoke, refresh |
-| View | Overview, Peers, Diagnose, refresh current view |
-| Tools | Change vault password and future maintenance actions |
-| Help | Keyboard help, version/about, quit |
+| Menu | Accelerator | Responsibilities |
+| --- | --- | --- |
+| Server | `Alt+S` | Open, add, edit, remove, install WireGuard, configure, refresh |
+| Peer | `Alt+P` | Add, inspect/actions, QR, export, pause/resume, rotate, revoke, refresh |
+| View | `Alt+V` | Overview, Peers, Diagnose, refresh current view |
+| Tools | `Alt+T` | Change vault password and future maintenance actions |
+| Help | `Alt+H` | Keyboard help, version/about, quit |
 
-`M` opens the command menu. Left/right switches category, up/down selects an
-item, Enter executes it, and Esc closes it without changing the underlying
-screen. Every category and item is mouse-clickable. Unavailable actions remain
-visible with a reason instead of silently disappearing.
+`M` also opens the command menu (on the last-focused category) as a
+mouse-free, modifier-free fallback. Left/right switches category, up/down
+selects an item, Enter executes it, and Esc closes it without changing the
+underlying screen. Every category and item is mouse-clickable. Unavailable
+actions remain visible with a reason instead of silently disappearing.
+
+No category shows an active background while the menu is closed - only the
+open dropdown's own category does. Which screen or tab happens to be showing
+is a separate fact from which menu is open, and the top row never conflates
+the two. There is no `│` separator between categories at any supported width;
+adjacent categories are told apart by their own text and even padding alone,
+the same calm reading Midnight Commander's top row gives its own categories.
 
 ## Letter-action bar
 
-The bottom row is divided into high-contrast segments. Each action exposes a
-highlighted letter, matching btop's discoverable shortcut convention:
+The bottom row is divided into high-contrast segments sharing one continuous
+background per segment - never a separate darker key cell next to the label.
+Each action exposes a highlighted letter *inside* its label text, matching
+btop's discoverable shortcut convention while reading as a single word:
 
-| Key | Stable meaning |
-| --- | --- |
-| ? | Help |
-| N | New server or peer |
-| O | Open selected server |
-| E | Edit selected server |
-| R | Refresh current data |
-| C | Configure server when applicable |
-| D | Diagnose/view diagnostics |
-| A | Selected peer actions |
-| X | Remove server or revoke peer |
-| M | Menu |
-| Q | Quit safely |
+| Key | Screen | Stable meaning |
+| --- | --- | --- |
+| ? | any | Help |
+| N | any | New server or peer |
+| O | server list | Open selected server |
+| E | server list | Edit selected server |
+| R | server list | Remove selected server |
+| P | server list | Change vault password |
+| R | server detail | Refresh current data |
+| I | server detail | Install WireGuard when missing |
+| C | server detail | Configure server when applicable |
+| D | server detail | Diagnose/view diagnostics |
+| A | Peers tab | Selected peer actions |
+| O | Peers tab | Revoke selected peer |
+| B | server detail | Back to server list |
+| M | any | Menu |
+| Q | any | Quit safely |
+
+`O` and `R` mean different things on different screens - each bottom bar's
+own accelerators are unique among themselves (case-insensitively), but the
+same letter is free to be reused once its earlier screen is no longer
+visible. A thin dark gap, not a `│`, separates adjacent segments.
 
 At the supported minimum `64×18`, labels may abbreviate but accelerator letters
 remain visible. Wider terminals use descriptive labels. Each segment is clickable.
