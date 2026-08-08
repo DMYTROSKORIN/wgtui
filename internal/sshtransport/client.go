@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +15,23 @@ import (
 
 	"github.com/creack/pty"
 )
+
+// ErrSudoPasswordRejected wraps a SudoValidate failure that the remote sudo
+// prompt explicitly attributed to a wrong password, as opposed to a
+// connection failure or the account simply not being in the sudoers file.
+// Callers use this to tell the user their password was wrong instead of a
+// generic "insufficient privileges", and to avoid silently retrying the
+// same rejected value on a later call.
+var ErrSudoPasswordRejected = errors.New("sudo rejected the supplied password")
+
+// sudoPasswordWasRejected looks for sudo's own wording for a wrong
+// password. Ubuntu, Debian and Fedora - the only MVP-supported distros
+// (SPEC.md §30.6) - all ship the same upstream sudo build, which is what
+// this matches against.
+func sudoPasswordWasRejected(out []byte) bool {
+	s := strings.ToLower(string(out))
+	return strings.Contains(s, "incorrect password") || strings.Contains(s, "sorry, try again")
+}
 
 // Prompts lets a caller answer interactive prompts coming from the system
 // ssh/sudo binaries. Every answer is written straight to the PTY's stdin —
@@ -157,7 +175,10 @@ func (c *Client) RunCommand(ctx context.Context, remoteCmd string) (Result, erro
 // window did not hold up across separate ssh processes on this target.
 func (c *Client) SudoValidate(ctx context.Context, prompts Prompts) error {
 	args := append(c.baseArgs(), "-tt", c.target.HostOrAlias, "sudo -v")
-	_, err := c.runInteractive(ctx, args, prompts)
+	out, err := c.runInteractive(ctx, args, prompts)
+	if err != nil && sudoPasswordWasRejected(out) {
+		return fmt.Errorf("%w", ErrSudoPasswordRejected)
+	}
 	return err
 }
 

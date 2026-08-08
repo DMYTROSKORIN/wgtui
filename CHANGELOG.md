@@ -3,6 +3,41 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.5.1] - 2026-08-09
+
+### Fixed
+
+- Overview, Peers and Diagnose tabs are now mouse-clickable, matching every
+  other menu/action segment in the app.
+- Fixed a real display bug in the wide Diagnose panel: the selected check
+  row's status badge is already ANSI-styled text, and truncating it with the
+  helper meant for plain user text stripped the ESC bytes out of its color
+  codes while leaving the rest of each escape sequence behind as visible
+  garbage (e.g. `[1;38;2;255;95;109m`). The selected row now builds from
+  plain text and is styled exactly once.
+- The vault password action moved from `P` to `W` (pass**W**ord) on the
+  server list, so it can never be confused with `Alt+P` (the Peer menu) -
+  reported as confusing in practice, especially on terminals where an
+  Alt-prefixed sequence occasionally arrives as a split Escape-then-letter.
+  No bottom-bar accelerator, on any screen, is ever a top-menu category's
+  own letter now (enforced by a new test).
+- SSH and sudo passwords are now cached for as long as a server stays open in
+  the detail screen, not just for a single connection - install, post-install
+  rediscovery and configure no longer ask for the same password repeatedly
+  within one working session. The cache is cleared when the server session
+  ends and specifically when a cached sudo password turns out to be wrong,
+  so a rejected password is never silently retried.
+- A wrong sudo password now produces an explicit "sudo password was rejected
+  by the server" message instead of silently falling back to a generic
+  "insufficient privileges" state with no indication of what actually went
+  wrong.
+- Installing WireGuard on a server with no existing interface now continues
+  straight into the configure wizard instead of stopping at Overview with
+  Configure as a separate, easy-to-miss step.
+- Documented the already-implemented `wgtui mcp` AI-agent/automation front
+  end in the README - it existed and worked, but had no discoverable usage
+  instructions outside `docs/ARCHITECTURE.md`.
+
 ## [0.5.0] - 2026-08-09
 
 ### Changed

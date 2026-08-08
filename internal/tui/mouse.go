@@ -25,6 +25,13 @@ func (m *model) updateCommanderMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if !m.menuOpen && m.screen == screenServerDetail && event.Y == detailTabsRow {
+		if tab, ok := tabClickTarget(event.X - detailTabsColumn); ok {
+			return m, m.selectCommanderTab(tab)
+		}
+		return m, nil
+	}
+
 	if m.menuOpen {
 		items := m.commanderMenuItems(m.menuCategory)
 		item := event.Y - 2

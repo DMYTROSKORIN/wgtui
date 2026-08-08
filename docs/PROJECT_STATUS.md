@@ -4,13 +4,69 @@ Last updated: 2026-08-09
 
 Active branch: `master`
 
-Release target: `v0.5.0`
+Release target: `v0.5.1`
 
-Release status: **v0.5.0 published, installed and complete**
+Release status: **releasing now** - a round of real-world bug reports against
+`v0.5.0` (tab mouse clicks, a diagnose rendering bug, the Peer/Password letter
+collision, sudo/SSH password re-prompting, install/configure being awkwardly
+separate, an unclear wrong-sudo-password state, and undocumented MCP) is fixed,
+tested and merged into `master`; this checkpoint is being written as part of
+tagging and publishing `v0.5.1`
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
+
+## Completed in the `v0.5.1` release cycle
+
+- Fixed six user-reported issues against the freshly released `v0.5.0` UI, found by
+  testing the real installed binary against a KDE desktop terminal and the disposable
+  VM `192.168.122.245`:
+  1. Overview/Peers/Diagnose tabs are now mouse-clickable (`internal/tui/mouse.go`,
+     `internal/tui/view.go`'s new `tabClickTarget`/`detailTabsRow`/`detailTabsColumn`,
+     shared with the renderer so a click always lands on the tab it appears over).
+  2. Fixed a real ANSI-corruption bug in the wide Diagnose panel: the selected row
+     truncated already-styled badge text with a helper meant for plain user text,
+     which strips the ESC byte out of embedded color codes and leaves the rest of
+     each escape sequence as visible garbage. Added `checkStatusPlain` and rebuilt
+     the selected row from plain text styled exactly once. Verified live via raw
+     ANSI capture in tmux, not just unit tests.
+  3. The vault password accelerator moved from `P` to `W` (pass**W**ord) so it can
+     never be confused with `Alt+P` (Peer menu) - confirmed via screenshots that the
+     confusion was real in practice. Added `TestBottomBarNeverReusesATopCategoryLetter`
+     to keep this true going forward.
+  4. SSH/sudo passwords are now cached for the lifetime of an open server session
+     (`internal/tui/credentials.go`'s `credentialCache`, held on `*model.creds`,
+     cleared on `returnToServerList` and specifically on a rejected sudo password)
+     instead of once per individual SSH dial - install, post-install rediscovery and
+     configure no longer re-prompt for the same secret. Deliberately stores `[]byte`,
+     not `string`, so a clear can zero it in place; documented the residual
+     ptrace/core-dump exposure this does not and cannot eliminate in pure Go without
+     cgo/mlock, matching `docs/THREAT_MODEL.md`'s existing framing.
+  5. A wrong sudo password now produces an explicit, distinguishable error
+     (`sshtransport.ErrSudoPasswordRejected`, detected from sudo's own "incorrect
+     password"/"Sorry, try again" wording, plumbed through
+     `discovery.Report.System.SudoPasswordRejected`) instead of silently reporting
+     generic "insufficient privileges" with no explanation.
+  6. Installing WireGuard on a server with no interface now continues straight into
+     the configure wizard (`model.afterInstall`) instead of stopping at Overview -
+     matches SPEC.md §12.1's originally documented option 2 ("Установить и запустить
+     мастер настройки сервера"), which the TUI had never actually wired up.
+  7. Documented the already-working `wgtui mcp` front end in the README; it was
+     real and functional (confirmed via a manual stdio `initialize` smoke test) but
+     had no discoverable usage instructions outside `docs/ARCHITECTURE.md`.
+- Added regression tests for all of the above:
+  `internal/tui/menu_redesign_test.go` (bottom bar vs. top category letters),
+  `internal/tui/credentials_test.go` (cache reuse/clear, rejected-sudo wiring),
+  `internal/tui/server_actions_test.go` (`afterInstall` chaining),
+  `internal/sshtransport/client_test.go` (`sudoPasswordWasRejected`).
+- `gofmt`, `go build`, `go vet`, `staticcheck v0.7.0`, `govulncheck v1.6.0` (0 called
+  vulnerabilities), `go test ./...`, `go test -race ./...`, `CGO_ENABLED=0` Darwin
+  amd64/arm64 cross-builds, and `goreleaser check` all pass on the changed tree.
+- Live-verified in tmux against an isolated `HOME` and the real `192.168.122.245`
+  VM: bottom bar shows `W` highlighted inside "Password" with correct ANSI: the
+  diagnose selected-row fix, no repeated SSH/sudo prompts across a Refresh, and the
+  Overview/Diagnose screens render correctly end to end.
 
 ## Completed in the `v0.5.0` release cycle
 

@@ -25,10 +25,17 @@ func (m *model) viewWideDiagnose(panelHeight int) string {
 	list.WriteString(tabsLine(m.tab) + "\n\n")
 	for i := start; i < end; i++ {
 		c := m.checks[i]
-		line := checkStatusBadge(string(c.Status)) + "  " + c.Name
 		if i == cursor {
-			list.WriteString(menuSelectedStyle.Render(truncateCell(line, max(12, listWidth-6))))
+			// menuSelectedStyle wraps this in one final Render() call, so
+			// the text going in must be plain - never checkStatusBadge's
+			// pre-styled output, which truncateCell (via terminalText)
+			// would corrupt by stripping the ESC bytes out of its ANSI
+			// codes while leaving the rest of each escape sequence behind
+			// as visible garbage.
+			plain := checkStatusPlain(string(c.Status)) + "  " + c.Name
+			list.WriteString(menuSelectedStyle.Render(truncateCell(plain, max(12, listWidth-6))))
 		} else {
+			line := checkStatusBadge(string(c.Status)) + "  " + c.Name
 			list.WriteString(ansi.Truncate(line, max(12, listWidth-4), "…"))
 		}
 		list.WriteByte('\n')

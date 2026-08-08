@@ -134,15 +134,46 @@ func peerStateBadge(state string) string {
 
 // Diagnose check status (diagnostics.Status: pass/warn/fail/skip).
 func checkStatusBadge(status string) string {
+	symbol, label := checkStatusSymbol(status)
+	return badge(checkStatusStyle(status), symbol, label)
+}
+
+// checkStatusPlain returns the same "symbol label" text as
+// checkStatusBadge but with no ANSI styling at all - needed wherever a
+// caller must still truncate or otherwise post-process the text before a
+// single final Render() call. Post-processing checkStatusBadge's output
+// directly is unsafe: helpers like truncateCell sanitize control
+// characters, which includes the ESC byte that starts every ANSI escape
+// code, corrupting already-styled text into visible garbage instead of
+// color (see internal/tui/diagnose.go's selected-row rendering).
+func checkStatusPlain(status string) string {
+	symbol, label := checkStatusSymbol(status)
+	return symbol + " " + label
+}
+
+func checkStatusSymbol(status string) (symbol, label string) {
 	switch status {
 	case "pass":
-		return badge(successStyle, "✓", "pass")
+		return "✓", "pass"
 	case "warn":
-		return badge(warningStyle, "!", "warn")
+		return "!", "warn"
 	case "fail":
-		return badge(dangerStyle, "✗", "fail")
+		return "✗", "fail"
 	default:
-		return badge(dimStyle, "-", "skip")
+		return "-", "skip"
+	}
+}
+
+func checkStatusStyle(status string) lipgloss.Style {
+	switch status {
+	case "pass":
+		return successStyle
+	case "warn":
+		return warningStyle
+	case "fail":
+		return dangerStyle
+	default:
+		return dimStyle
 	}
 }
 

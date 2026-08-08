@@ -249,24 +249,59 @@ func (m *model) viewServerHeader() string {
 	return appHeader(truncateCell(m.selected.DisplayName, nameWidth)) + "  " + connection
 }
 
+// detailTabs lists the server-detail tabs in display order. Shared by
+// tabsLine (rendering) and tabClickTarget (mouse hit-testing) so a click
+// always lands on the tab it visually appears over.
+var detailTabs = []struct {
+	tab   detailTab
+	label string
+}{
+	{tabOverview, "Overview"},
+	{tabPeers, "Peers"},
+	{tabDiagnose, "Diagnose"},
+}
+
+const detailTabGap = "   "
+
 func tabsLine(active detailTab) string {
-	tabs := []struct {
-		tab   detailTab
-		label string
-	}{
-		{tabOverview, "Overview"},
-		{tabPeers, "Peers"},
-		{tabDiagnose, "Diagnose"},
-	}
 	var parts []string
-	for _, t := range tabs {
+	for _, t := range detailTabs {
 		if t.tab == active {
 			parts = append(parts, tabActiveStyle.Render(t.label))
 		} else {
 			parts = append(parts, tabInactiveStyle.Render(t.label))
 		}
 	}
-	return strings.Join(parts, "   ")
+	return strings.Join(parts, detailTabGap)
+}
+
+// detailTabsRow is the fixed absolute row the tabs line renders on for
+// every server-detail layout (compact or wide): row 0 is the top commander
+// menu bar, row 1 is the server header, row 2 is the panel's top border,
+// row 3 is the panel's first content line - which is always tabsLine.
+const detailTabsRow = 3
+
+// detailTabsColumn is the fixed absolute column the tabs line starts at:
+// the left panel's own border (1 cell) plus its horizontal padding (1 cell).
+const detailTabsColumn = 2
+
+// tabClickTarget returns the tab whose rendered label contains column x
+// (measured from the tabs line's own left edge, i.e. subtract
+// detailTabsColumn from a mouse event's absolute X first), or ok=false if x
+// falls in a gap between tabs or past the last one.
+func tabClickTarget(x int) (tab detailTab, ok bool) {
+	pos := 0
+	for i, t := range detailTabs {
+		w := lipgloss.Width(t.label)
+		if x >= pos && x < pos+w {
+			return t.tab, true
+		}
+		pos += w
+		if i < len(detailTabs)-1 {
+			pos += len(detailTabGap)
+		}
+	}
+	return 0, false
 }
 
 func appHeader(section string) string {
@@ -352,14 +387,14 @@ func (m *model) viewHelp() string {
 		"  Alt+letter   top menu — Server(S) Peer(P) View(V) Tools(T) Help(H)\n" +
 		"  letter       bottom action — the highlighted letter inside its label\n\n" +
 		textStyle.Render("Server list bottom bar") + "\n" +
-		"  N New    O Open    E Edit    R Remove    P Password\n\n" +
+		"  N New    O Open    E Edit    R Remove    W Password\n\n" +
 		textStyle.Render("Server detail bottom bar") + "\n" +
 		"  N New peer   A Actions   O Revoke (Peers tab)   R Refresh\n" +
 		"  I Install (if missing)   C Configure   D Diagnose   B Back\n\n" +
 		"Arrows/j/k  Move selection       Tab Switch dashboard tab\n" +
 		"Enter       Open / continue      Esc Close dialog or go back\n" +
 		"M           Command menu         Q Quit safely\n\n" +
-		dimStyle.Render("The same letter can mean different things on different screens - e.g. plain P changes the vault password on the server list, while Alt+P opens the Peer menu everywhere.") + "\n" +
+		dimStyle.Render("The same letter can mean different things on different screens - e.g. plain O opens the selected server on the server list, while plain O revokes the selected peer on the Peers tab.") + "\n" +
 		dimStyle.Render("Mouse clicks on either bar work the same as their keys.") + "\n" +
 		dimStyle.Render("Network and destructive operations always show their own status or confirmation.")
 	return appHeader("Help") + "\n" + fullPanel(m, text) + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
@@ -380,7 +415,11 @@ func (m *model) viewOverviewTab() string {
 		b.WriteString(dimStyle.Render("State") + "       " + serverStateBadge(string(m.state)) + "\n\n")
 		b.WriteString(dimStyle.Render("System") + "      " + textStyle.Render(orDefault(r.System.Kernel, "(unknown)")) + "\n")
 		b.WriteString(dimStyle.Render("OS") + "          " + textStyle.Render(orDefault(r.System.OSID, "?")+" "+r.System.OSVersionID) + "\n")
-		b.WriteString(dimStyle.Render("sudo") + "        " + boolStatus(r.System.SudoAvailable, "available", "unavailable") + "\n\n")
+		b.WriteString(dimStyle.Render("sudo") + "        " + boolStatus(r.System.SudoAvailable, "available", "unavailable") + "\n")
+		if r.System.SudoPasswordRejected {
+			b.WriteString(dangerStyle.Render("  ✗ That sudo password was rejected by the server.") + "  " + keyHint("r", "Retry") + "\n")
+		}
+		b.WriteString("\n")
 
 		if !r.WireGuard.WgPresent {
 			b.WriteString(warningStyle.Render("WireGuard is not installed on this server.") + "\n")
@@ -462,7 +501,11 @@ func (m *model) viewCompactOverview() string {
 	var b strings.Builder
 	b.WriteString(dimStyle.Render("State") + "      " + serverStateBadge(string(m.state)) + "\n")
 	b.WriteString(dimStyle.Render("OS") + "         " + textStyle.Render(orDefault(r.System.OSID, "?")+" "+r.System.OSVersionID) + "\n")
-	b.WriteString(dimStyle.Render("sudo") + "       " + boolStatus(r.System.SudoAvailable, "available", "unavailable") + "\n\n")
+	b.WriteString(dimStyle.Render("sudo") + "       " + boolStatus(r.System.SudoAvailable, "available", "unavailable") + "\n")
+	if r.System.SudoPasswordRejected {
+		b.WriteString(dangerStyle.Render("✗ Password rejected") + "  " + keyHint("r", "Retry") + "\n")
+	}
+	b.WriteString("\n")
 	if !r.WireGuard.WgPresent {
 		b.WriteString(warningStyle.Render("○ WireGuard is not installed") + "  " + keyHint("i", "Install") + "\n")
 	} else if len(r.WireGuard.Interfaces) == 0 {

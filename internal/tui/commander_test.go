@@ -188,8 +188,12 @@ func TestCommanderActionBarAlwaysFitsAndShowsLetterAccelerators(t *testing.T) {
 		if strings.Contains(plain, "F1") || strings.Contains(plain, "F10") {
 			t.Fatalf("width %d still exposes function keys: %q", width, plain)
 		}
-		for _, key := range []string{"?", "N", "O", "E", "R", "P", "M", "Q"} {
-			if !strings.Contains(plain, key) {
+		upper := strings.ToUpper(plain)
+		for _, key := range []string{"?", "N", "O", "E", "R", "W", "M", "Q"} {
+			// Accelerators match case-insensitively and render in the
+			// label's own natural case (e.g. lowercase w in "Password"),
+			// not forced to uppercase - see renderAcceleratedLabel.
+			if !strings.Contains(upper, key) {
 				t.Fatalf("width %d omits %s: %q", width, key, plain)
 			}
 		}

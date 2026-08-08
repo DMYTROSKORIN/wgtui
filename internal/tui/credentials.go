@@ -33,9 +33,91 @@ type credentialRequestMsg struct {
 	response chan credentialResponse
 }
 
-func newTUIPrompts(program *tea.Program, target string) sshtransport.Prompts {
-	var mu sync.Mutex
-	var sshPassword, sudoPassword *string
+// credentialCache holds the SSH login and sudo passwords for as long as one
+// server stays open in the detail screen, so reconnecting for install,
+// post-install rediscovery, configure and so on within that same working
+// session doesn't ask the user to retype a secret they already gave. It is
+// held on *model (see the creds field) and cleared by clearCredentials -
+// called wherever a server session actually ends (returnToServerList) or a
+// cached sudo password turns out to be wrong (see clearSudoPassword) - so a
+// secret never outlives the session it was collected for and a rejected
+// password is never silently retried forever.
+//
+// Values are kept as []byte rather than string specifically so clear can
+// overwrite them in place: a Go string is immutable and can only be
+// dropped for the garbage collector to reclaim on its own schedule, never
+// actively erased. This narrows the exposure window but does not, and in
+// pure Go without cgo/mlock cannot, fully prevent another process with
+// ptrace or core-dump access to this same already-running, same-user wgtui
+// process from recovering a live value - the same residual risk
+// docs/THREAT_MODEL.md already documents for the sudo password held during
+// a single dial. Nothing here is ever written to disk, logs, argv or env
+// (SPEC.md §23.1), and sshtransport's Debug hook never receives typed
+// secrets.
+type credentialCache struct {
+	mu   sync.Mutex
+	ssh  []byte
+	sudo []byte
+}
+
+func (c *credentialCache) sshPassword() (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ssh == nil {
+		return "", false
+	}
+	return string(c.ssh), true
+}
+
+func (c *credentialCache) setSSHPassword(value string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ssh = []byte(value)
+}
+
+func (c *credentialCache) sudoPassword() (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.sudo == nil {
+		return "", false
+	}
+	return string(c.sudo), true
+}
+
+func (c *credentialCache) setSudoPassword(value string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.sudo = []byte(value)
+}
+
+// clearSudoPassword drops a cached sudo password without touching the SSH
+// one - used specifically when the server told us that password was wrong
+// (discovery.Report.System.SudoPasswordRejected), so the next privileged
+// action prompts the human again instead of silently retrying a value the
+// server has already refused.
+func (c *credentialCache) clearSudoPassword() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	zeroBytes(c.sudo)
+	c.sudo = nil
+}
+
+// clear erases both cached secrets - call when a server session ends.
+func (c *credentialCache) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	zeroBytes(c.ssh)
+	zeroBytes(c.sudo)
+	c.ssh, c.sudo = nil, nil
+}
+
+func zeroBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+}
+
+func newTUIPrompts(program *tea.Program, target string, cache *credentialCache) sshtransport.Prompts {
 	request := func(kind credentialKind, detail string) (credentialResponse, error) {
 		if program == nil {
 			return credentialResponse{}, errors.New("interactive credential prompt is unavailable before the TUI starts")
@@ -51,37 +133,25 @@ func newTUIPrompts(program *tea.Program, target string) sshtransport.Prompts {
 			return err == nil && answer.accepted
 		},
 		Password: func() (string, error) {
-			mu.Lock()
-			if sshPassword != nil {
-				value := *sshPassword
-				mu.Unlock()
+			if value, ok := cache.sshPassword(); ok {
 				return value, nil
 			}
-			mu.Unlock()
 			answer, err := request(credentialSSHPassword, "")
 			if err != nil {
 				return "", err
 			}
-			mu.Lock()
-			sshPassword = &answer.value
-			mu.Unlock()
+			cache.setSSHPassword(answer.value)
 			return answer.value, nil
 		},
 		SudoPassword: func() (string, error) {
-			mu.Lock()
-			if sudoPassword != nil {
-				value := *sudoPassword
-				mu.Unlock()
+			if value, ok := cache.sudoPassword(); ok {
 				return value, nil
 			}
-			mu.Unlock()
 			answer, err := request(credentialSudoPassword, "")
 			if err != nil {
 				return "", err
 			}
-			mu.Lock()
-			sudoPassword = &answer.value
-			mu.Unlock()
+			cache.setSudoPassword(answer.value)
 			return answer.value, nil
 		},
 	}

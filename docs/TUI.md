@@ -92,8 +92,11 @@ Two accelerator systems exist side by side and never share a key:
   screen is open.
 - **A plain letter** runs a bottom-bar action for the *current* screen. The
   same letter can mean different things on different screens - e.g. plain
-  `P` changes the vault password on the server list, while `Alt+P` opens the
-  Peer menu everywhere.
+  `O` opens the selected server on the server list, but revokes the selected
+  peer on the Peers tab. No bottom-bar letter is ever also a top-menu
+  category's first letter (`S`/`P`/`V`/`T`/`H`), specifically so a plain
+  keypress can never be mistaken for the Alt+letter it resembles - the vault
+  password action uses `W`, not `P`, for exactly this reason.
 
 | Key | Screen | Meaning |
 | --- | --- | --- |
@@ -102,7 +105,7 @@ Two accelerator systems exist side by side and never share a key:
 | `O` / `Enter` | server list | Open the selected server |
 | `E` | server list | Edit the selected server |
 | `R` | server list | Remove the selected server (confirmation required) |
-| `P` | server list | Change the vault password |
+| `W` | server list | Change the vault passWord |
 | `R` | server detail | Explicitly refresh the active view |
 | `I` | server detail | Install WireGuard (only when it is missing) |
 | `C` | server detail | Configure the open server when applicable |

@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"errors"
 	"path"
 	"strings"
 
@@ -54,6 +55,7 @@ func discoverSystem(ctx context.Context, client *sshtransport.Client, prompts ss
 	if err := client.SudoValidate(ctx, prompts); err == nil {
 		r.System.SudoAvailable = true
 	} else {
+		r.System.SudoPasswordRejected = errors.Is(err, sshtransport.ErrSudoPasswordRejected)
 		r.Errors = append(r.Errors, "sudo validation: "+err.Error())
 	}
 }

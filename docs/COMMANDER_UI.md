@@ -32,9 +32,14 @@ and they must never make the same letter promise two different things:
   `Remove`, the `O` in `revOke`) - never a separate key cell printed next to
   the label.
 
-Because the two systems use different modifiers, the same letter can mean two
-different things without conflict: `Alt+P` always opens the Peer menu, while
-plain `P` on the server list changes the vault password.
+Because the two systems use different modifiers, a letter can safely be
+reused between them - `Alt+P` always opens the Peer menu even while a bottom
+bar uses plain `P` for something else. In practice no bottom-bar action uses
+a top category's own letter (`S`/`P`/`V`/`T`/`H`) at all: the vault password
+action is bound to `W` (passWord), not `P`, specifically so a bottom-bar
+keypress can never be mistaken for the Alt+letter it superficially resembles,
+even on a terminal where an Alt-prefixed sequence occasionally arrives split
+into a lone Escape followed by a plain letter.
 
 ## Top menu
 
@@ -75,7 +80,7 @@ btop's discoverable shortcut convention while reading as a single word:
 | O | server list | Open selected server |
 | E | server list | Edit selected server |
 | R | server list | Remove selected server |
-| P | server list | Change vault password |
+| W | server list | Change vault passWord |
 | R | server detail | Refresh current data |
 | I | server detail | Install WireGuard when missing |
 | C | server detail | Configure server when applicable |

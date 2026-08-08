@@ -114,6 +114,32 @@ a deliberate, separate step.
 
 </details>
 
+## AI agent / automation front end (MCP)
+
+`wgtui mcp` runs a separate, non-interactive [MCP](https://modelcontextprotocol.io) server
+over stdio, so an external AI agent (or any MCP client) can drive `wgtui` the same way a
+human drives the TUI - same discovery, same plan-before-apply, same explicit-confirmation
+requirement for every mutation. It's a distinct process/mode, not something the TUI itself
+exposes while running; nothing needs installing beyond `wgtui` itself.
+
+```bash
+WGTUI_MASTER_PASSWORD='your vault master password' wgtui mcp
+```
+
+The vault master password must come from that environment variable specifically - stdin/stdout
+*are* the MCP protocol channel, so there is no terminal left to prompt on. `wgtui mcp` refuses
+to start without it.
+
+Registered tools: `list_servers`, `server_inspect`, `server_diagnose`, `peer_list` (read-only),
+and `peer_add`/`peer_disable`/`peer_enable`/`peer_revoke`/`peer_rotate` (mutating, each gated
+by a `confirm` argument - `confirm=false`, the default, only returns the plan a human would
+see and changes nothing; `confirm=true` applies it). A server's SSH host key must be trusted
+once from a real terminal (`wgtui server inspect`, cli or tui) before that server can be
+driven through MCP - first-trust confirmation has no terminal to render on here and always
+refuses. Full design and the credential/host-key trade-offs this implies:
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#mcp-server-front-end-internalmcpserver) and
+[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) (T10).
+
 ## Development
 
 Every push is scanned with [Semgrep](https://semgrep.dev) (`p/golang`, `p/security-audit`,

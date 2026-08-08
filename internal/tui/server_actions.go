@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 
+	"github.com/DMYTROSKORIN/wgtui/internal/discovery"
 	"github.com/DMYTROSKORIN/wgtui/internal/osadapter"
 )
 
@@ -22,7 +23,7 @@ func (m *model) startInstallWizard() tea.Cmd {
 	return m.runAsync(func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
-		prompts := newTUIPrompts(m.program, serverLabel(s))
+		prompts := newTUIPrompts(m.program, serverLabel(s), &m.creds)
 		sess, err := dial(ctx, s, prompts)
 		if err != nil {
 			return planReadyMsg{err: fmt.Errorf("connect: %w", err), cancelScreen: screenServerDetail}
@@ -61,10 +62,16 @@ func (m *model) startInstallWizard() tea.Cmd {
 	})
 }
 
+// applyInstall's done callback continues straight into the configure
+// wizard instead of stopping back at Overview: on a freshly installed
+// server there is nothing useful to do with a bare "WireGuard is
+// installed, now go press C yourself" stop - the very next step is always
+// configuring an interface, so the install wizard walks the user there
+// directly (still by way of the Configure form and its own Apply/Cancel
+// confirmation - nothing is created without a second explicit confirm).
 func (m *model) applyInstall(plan osadapter.InstallPlan) func(*model) tea.Cmd {
 	return func(m *model) tea.Cmd {
 		sess := m.activeSession
-		s := m.selected
 		return m.runAsync(func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
 			defer cancel()
@@ -75,14 +82,26 @@ func (m *model) applyInstall(plan osadapter.InstallPlan) func(*model) tea.Cmd {
 			if err != nil {
 				return actionDoneMsg{err: fmt.Errorf("install ran but post-install verification failed: %w", err)}
 			}
-			return actionDoneMsg{done: func(m *model) tea.Cmd {
-				m.setStatus("Installed. " + version)
-				m.loading = true
-				m.detailErr = ""
-				return m.connectAndDiscoverCmd(s)
-			}}
+			return actionDoneMsg{done: func(m *model) tea.Cmd { return m.afterInstall(version) }}
 		})
 	}
+}
+
+// afterInstall patches the in-memory report to reflect a just-succeeded
+// install and continues straight into configure-prep. Split out from
+// applyInstall's done closure so the patch-then-continue behavior can be
+// asserted directly without driving a real SSH connection.
+func (m *model) afterInstall(version string) tea.Cmd {
+	m.setStatus("Installed " + version + " - continuing to interface configuration.")
+	// Patched in immediately rather than waiting on the configure-prep
+	// dial below: if that dial fails or the user cancels the configure
+	// form, Overview must still show the install that just genuinely
+	// succeeded instead of stale "WireGuard missing" data offering
+	// Install again.
+	m.report.WireGuard.WgPresent = true
+	m.report.WireGuard.WgVersion = version
+	m.state = discovery.StateToolsNoInterfaces
+	return m.startConfigurePrep()
 }
 
 // configurePrepMsg carries the connected session plus auto-suggested
@@ -102,7 +121,7 @@ func (m *model) startConfigurePrep() tea.Cmd {
 	return m.runAsync(func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		prompts := newTUIPrompts(m.program, serverLabel(s))
+		prompts := newTUIPrompts(m.program, serverLabel(s), &m.creds)
 		sess, err := dial(ctx, s, prompts)
 		if err != nil {
 			return configurePrepMsg{err: fmt.Errorf("connect: %w", err)}

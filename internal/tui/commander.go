@@ -181,7 +181,7 @@ func (m *model) commanderMenuItems(category int) []commanderMenuItem {
 		}
 	case 3:
 		return []commanderMenuItem{
-			enabled("P", "Change vault password…", "Re-encrypt local server and peer metadata with a new master password.", actionChangePassword, m.screen == screenServerList, "Return to the server list first."),
+			enabled("W", "Change vault password…", "Re-encrypt local server and peer metadata with a new master password.", actionChangePassword, m.screen == screenServerList, "Return to the server list first."),
 		}
 	default:
 		return []commanderMenuItem{
@@ -301,6 +301,7 @@ func (m *model) returnToServerList() {
 	m.peerReconnected = false
 	m.detailSession.close()
 	m.detailSession = nil
+	m.creds.clear()
 	m.screen = screenServerList
 	m.clearStatus()
 }
@@ -399,7 +400,7 @@ func (m *model) handleCommanderAccelerator(value string) (tea.Cmd, bool) {
 			return m.dispatchCommanderAction(actionEditServer), true
 		case "r":
 			return m.dispatchCommanderAction(actionRemoveServer), true
-		case "p":
+		case "w":
 			return m.dispatchCommanderAction(actionChangePassword), true
 		}
 	}
@@ -583,7 +584,7 @@ func (m *model) commanderActionHints() []commanderHint {
 		hints = append(hints, commanderHint{"C", "Configure", actionConfigureServer, !m.loading && m.detailErr == "" && m.report.WireGuard.WgPresent}, commanderHint{"D", "Diagnose", actionShowDiagnose, true}, commanderHint{"B", "Back", actionShowServerList, true})
 	} else if m.screen == screenServerList {
 		hasServer := len(m.vault.Registry.Servers) > 0
-		hints = append(hints, commanderHint{"N", "New", actionNewServer, true}, commanderHint{"O", "Open", actionOpenServer, hasServer}, commanderHint{"E", "Edit", actionEditServer, hasServer}, commanderHint{"R", "Remove", actionRemoveServer, hasServer}, commanderHint{"P", "Password", actionChangePassword, true})
+		hints = append(hints, commanderHint{"N", "New", actionNewServer, true}, commanderHint{"O", "Open", actionOpenServer, hasServer}, commanderHint{"E", "Edit", actionEditServer, hasServer}, commanderHint{"R", "Remove", actionRemoveServer, hasServer}, commanderHint{"W", "Password", actionChangePassword, true})
 	}
 	return append(hints, commanderHint{"M", "Menu", "", true}, commanderHint{"Q", "Quit", actionQuit, true})
 }

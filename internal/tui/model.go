@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -111,6 +112,14 @@ type model struct {
 	credentialValue    string
 	credentialAccepted bool
 	credentialReturn   screen
+
+	// creds caches the SSH/sudo passwords for as long as the current server
+	// stays open, so re-dialing within one working session (install,
+	// post-install rediscovery, configure, ...) doesn't ask the user to
+	// retype the same secret. Cleared in returnToServerList. See
+	// credentialCache's doc comment for what this does and does not protect
+	// against.
+	creds credentialCache
 
 	// server list / add / edit / remove
 	selected   domain.Server
@@ -298,6 +307,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.report = msg.report
 		m.state = msg.state
 		m.detailErr = msg.err
+		if msg.report.System.SudoPasswordRejected {
+			// Never keep retrying a password the server has already
+			// refused - the next privileged action should ask again, not
+			// silently reuse it (and fail again) or proceed unprivileged.
+			m.creds.clearSudoPassword()
+			m.setError(errors.New("sudo password was rejected by the server - press R to reconnect and try again"))
+		}
 		if m.tab == tabPeers && !m.peersLoaded {
 			if msg.err != "" {
 				m.peersLoaded = true
@@ -606,7 +622,7 @@ func (m *model) connectAndDiscoverCmd(s domain.Server) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
-		prompts := newTUIPrompts(m.program, serverLabel(s))
+		prompts := newTUIPrompts(m.program, serverLabel(s), &m.creds)
 		sess, err := dial(ctx, s, prompts)
 		if err != nil {
 			return discoveryMsg{serverID: s.ID, requestID: requestID, err: fmt.Sprintf("connect: %v", err)}

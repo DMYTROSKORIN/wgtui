@@ -9,6 +9,12 @@ type SystemInfo struct {
 	PackageManager string // "apt", "dnf", "" if unrecognized
 	CurrentUser    string
 	SudoAvailable  bool // whether the supplied sudo credential actually works
+	// SudoPasswordRejected is set when SudoAvailable is false specifically
+	// because the remote sudo prompt rejected the supplied password (as
+	// opposed to a connection failure or the account not being in the
+	// sudoers file at all) - callers use this to tell the user their
+	// password was wrong instead of a generic "insufficient privileges".
+	SudoPasswordRejected bool
 }
 
 // InterfaceDetail covers SPEC.md §11.2 for one WireGuard interface name.

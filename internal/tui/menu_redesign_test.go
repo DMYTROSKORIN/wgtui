@@ -69,9 +69,55 @@ func TestAltPeerOpensMenuIndependentlyOfPlainPasswordAccelerator(t *testing.T) {
 		t.Fatalf("Esc did not close the menu without leaving the server list: open=%v screen=%v", m.menuOpen, m.screen)
 	}
 
-	m.Update(key("p"))
+	// The vault password action is bound to plain W (passWord), not P -
+	// deliberately, so it can never be confused with Alt+P even if a
+	// terminal delivers Alt+P as a split Escape-then-letter sequence (see
+	// docs/COMMANDER_UI.md).
+	m.Update(key("w"))
 	if m.menuOpen || m.screen != screenChangePassword {
-		t.Fatalf("plain P did not open the vault password form: open=%v screen=%v", m.menuOpen, m.screen)
+		t.Fatalf("plain W did not open the vault password form: open=%v screen=%v", m.menuOpen, m.screen)
+	}
+}
+
+// TestBottomBarNeverReusesATopCategoryLetter locks in the mitigation for the
+// Peer/Password confusion reported after the first redesign: even though
+// Alt+letter and a plain letter are technically different key events, a
+// bottom-bar letter identical to a top category's own letter invites
+// exactly the confusion a user hit in practice, especially on terminals
+// where an Alt-prefixed sequence occasionally arrives split into a lone
+// Escape followed by a plain letter. No bottom-bar accelerator, on any
+// screen, may equal a top category's letter.
+func TestBottomBarNeverReusesATopCategoryLetter(t *testing.T) {
+	topLetters := map[string]bool{}
+	for _, c := range commanderCategories {
+		topLetters[strings.ToUpper(c.key)] = true
+	}
+
+	server := domain.Server{ID: "office", DisplayName: "Office"}
+	cases := []struct {
+		name  string
+		setup func(*model)
+	}{
+		{"server list", func(m *model) {}},
+		{"server overview", func(m *model) {
+			m.screen, m.tab, m.selected = screenServerDetail, tabOverview, server
+		}},
+		{"peers tab", func(m *model) {
+			m.screen, m.tab, m.selected = screenServerDetail, tabPeers, server
+			m.peers = []peerview.Peer{{Name: "Phone", PublicKey: "pk", Managed: true, State: "online"}}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := testModel(t, server)
+			tc.setup(m)
+			for _, hint := range m.commanderActionHints() {
+				fold := strings.ToUpper(hint.key)
+				if topLetters[fold] {
+					t.Fatalf("bottom-bar accelerator %q collides with a top-menu category letter", hint.key)
+				}
+			}
+		})
 	}
 }
 
@@ -122,7 +168,7 @@ func TestBottomBarHasNoSeparateKeyCellPattern(t *testing.T) {
 	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
 	m.width = 120
 	plain := ansi.Strip(m.commanderActionBar())
-	for _, bad := range []string{"OOpen", "EEdit", "PPassword", "NNew", "QQuit"} {
+	for _, bad := range []string{"OOpen", "EEdit", "WPassword", "NNew", "QQuit"} {
 		if strings.Contains(plain, bad) {
 			t.Fatalf("bottom bar still doubles an accelerator letter as a separate key cell: %q in %q", bad, plain)
 		}

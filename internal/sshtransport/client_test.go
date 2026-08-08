@@ -39,3 +39,24 @@ func containsPair(args []string, flag, val string) bool {
 	}
 	return false
 }
+
+func TestSudoPasswordWasRejected(t *testing.T) {
+	cases := []struct {
+		name string
+		out  string
+		want bool
+	}{
+		{"lowercase incorrect password", "Sorry, try again.\nsudo: 1 incorrect password attempt", true},
+		{"sorry try again only", "[sudo] password for skorin: Sorry, try again.\n[sudo] password for skorin: ", true},
+		{"unrelated command failure", "bash: apt-get: command not found", false},
+		{"not in sudoers", "skorin is not in the sudoers file.  This incident will be reported.", false},
+		{"empty", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sudoPasswordWasRejected([]byte(tc.out)); got != tc.want {
+				t.Fatalf("sudoPasswordWasRejected(%q) = %v, want %v", tc.out, got, tc.want)
+			}
+		})
+	}
+}
