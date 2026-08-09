@@ -33,27 +33,34 @@ type PeerListArgs struct {
 	Credentials
 }
 
-func (s *Server) peerList(ctx context.Context, req *mcp.CallToolRequest, args PeerListArgs) (*mcp.CallToolResult, []peerview.Peer, error) {
+// PeerListResult wraps the peer slice in a named field - see
+// ServerListResult's doc comment for why a bare slice return breaks tool
+// discovery for MCP clients that require an object-shaped outputSchema.
+type PeerListResult struct {
+	Peers []peerview.Peer `json:"peers"`
+}
+
+func (s *Server) peerList(ctx context.Context, req *mcp.CallToolRequest, args PeerListArgs) (*mcp.CallToolResult, PeerListResult, error) {
 	client, target, cleanup, err := s.connect(ctx, args.ServerID, args.Credentials)
 	if err != nil {
-		return nil, nil, err
+		return nil, PeerListResult{}, err
 	}
 	defer cleanup()
 	prompts := args.Credentials.prompts()
 
 	if err := client.SudoValidate(ctx, prompts); err != nil {
-		return nil, nil, fmt.Errorf("sudo: %w", err)
+		return nil, PeerListResult{}, fmt.Errorf("sudo: %w", err)
 	}
 	res, err := client.RunSudo(ctx, "wg show all dump", prompts)
 	if err != nil {
-		return nil, nil, fmt.Errorf("wg show all dump: %w", err)
+		return nil, PeerListResult{}, fmt.Errorf("wg show all dump: %w", err)
 	}
 	if res.ExitCode != 0 {
-		return nil, nil, fmt.Errorf("wg show all dump exited %d: %s", res.ExitCode, res.Stderr)
+		return nil, PeerListResult{}, fmt.Errorf("wg show all dump exited %d: %s", res.ExitCode, res.Stderr)
 	}
 	dump, err := wgconfig.ParseDump(string(res.Stdout))
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse wg dump: %w", err)
+		return nil, PeerListResult{}, fmt.Errorf("parse wg dump: %w", err)
 	}
 
 	views := peerview.Reconcile(dump.Peers, s.vault.ListPeers(target.ID), func(pubKey string) bool {
@@ -61,7 +68,7 @@ func (s *Server) peerList(ctx context.Context, req *mcp.CallToolRequest, args Pe
 		return ok
 	}, time.Now())
 
-	return textResult(fmt.Sprintf("%d peer(s)", len(views))), views, nil
+	return textResult(fmt.Sprintf("%d peer(s)", len(views))), PeerListResult{Peers: views}, nil
 }
 
 type PeerAddArgs struct {

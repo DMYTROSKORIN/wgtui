@@ -64,13 +64,48 @@ func callTool[Out any](t *testing.T, cs *mcp.ClientSession, name string, args an
 	return out, res
 }
 
+// TestToolOutputSchemasAreObjects guards a real bug reported by an actual
+// MCP client (Claude Code): list_servers and peer_list returned a bare
+// Go slice ([]ServerSummary / []peerview.Peer) from their handler, which
+// AddTool's reflection-based schema inference turns into an outputSchema of
+// "type": "array" instead of "object". The MCP spec requires structured
+// tool output to be a JSON object, so a client enforcing that rejects the
+// tool during listing with "Invalid input: expected 'object'" - which
+// breaks discovery for every tool this server registers, not just the
+// offending one, since tools/list returns them all in one response. Every
+// tool's outputSchema must describe an object at the top level (or have no
+// outputSchema at all, for a tool with no structured output).
+func TestToolOutputSchemasAreObjects(t *testing.T) {
+	cs := newTestSession(t)
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	if len(res.Tools) == 0 {
+		t.Fatal("ListTools returned no tools")
+	}
+	for _, tool := range res.Tools {
+		if tool.OutputSchema == nil {
+			continue // no structured output declared - fine
+		}
+		schema, ok := tool.OutputSchema.(map[string]any)
+		if !ok {
+			t.Errorf("tool %q: outputSchema is %T, want map[string]any after JSON round-trip", tool.Name, tool.OutputSchema)
+			continue
+		}
+		if got := schema["type"]; got != "object" {
+			t.Errorf("tool %q: outputSchema[\"type\"] = %v, want \"object\"", tool.Name, got)
+		}
+	}
+}
+
 func TestListServers(t *testing.T) {
 	cs := newTestSession(t)
-	out, res := callTool[[]ServerSummary](t, cs, "list_servers", ListServersArgs{})
+	out, res := callTool[ServerListResult](t, cs, "list_servers", ListServersArgs{})
 	if res.IsError {
 		t.Fatalf("list_servers returned an error result: %+v", res)
 	}
-	if len(out) != 1 || out[0].ID != "nas" {
+	if len(out.Servers) != 1 || out.Servers[0].ID != "nas" {
 		t.Fatalf("list_servers = %+v, want one server with ID 'nas'", out)
 	}
 }

@@ -3,6 +3,21 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.5.5] - 2026-08-09
+
+### Fixed
+
+- The MCP server's `list_servers` and `peer_list` tools returned a bare Go
+  slice from their handler, which reflects to an `outputSchema` of
+  `"type": "array"` instead of `"type": "object"`. MCP requires structured
+  tool output to be an object, so a client enforcing that (confirmed:
+  Claude Code) rejected the schema while listing tools with `Invalid
+  input: expected "object"` - breaking discovery for every tool this
+  server registers, not just the two offending ones, since `tools/list`
+  returns them all in one response. Both now return a named wrapper struct
+  (`ServerListResult`/`PeerListResult`) instead. A new test asserts every
+  registered tool's `outputSchema` is object-shaped going forward.
+
 ## [0.5.4] - 2026-08-09
 
 ### Changed

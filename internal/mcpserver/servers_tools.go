@@ -21,7 +21,18 @@ type ServerSummary struct {
 	SSHPort        int    `json:"ssh_port,omitempty"`
 }
 
-func (s *Server) listServers(ctx context.Context, req *mcp.CallToolRequest, args ListServersArgs) (*mcp.CallToolResult, []ServerSummary, error) {
+// ServerListResult wraps the server slice in a named field rather than
+// returning it bare. MCP's outputSchema must describe a JSON object at the
+// top level (structured tool content is always delivered as an object) - a
+// Go handler returning a bare slice reflects to a schema of "type": "array"
+// instead, which some MCP clients (confirmed: Claude Code) reject outright
+// with "Invalid input: expected 'object'" while listing tools, breaking
+// discovery for every tool this server registers, not just this one.
+type ServerListResult struct {
+	Servers []ServerSummary `json:"servers"`
+}
+
+func (s *Server) listServers(ctx context.Context, req *mcp.CallToolRequest, args ListServersArgs) (*mcp.CallToolResult, ServerListResult, error) {
 	out := make([]ServerSummary, 0, len(s.vault.Registry.Servers))
 	for _, srv := range s.vault.Registry.Servers {
 		out = append(out, ServerSummary{
@@ -29,7 +40,7 @@ func (s *Server) listServers(ctx context.Context, req *mcp.CallToolRequest, args
 			SSHUser: srv.SSHUser, SSHPort: srv.SSHPort,
 		})
 	}
-	return textResult(fmt.Sprintf("%d server(s) registered", len(out))), out, nil
+	return textResult(fmt.Sprintf("%d server(s) registered", len(out))), ServerListResult{Servers: out}, nil
 }
 
 type ServerIDArgs struct {

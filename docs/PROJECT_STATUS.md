@@ -4,17 +4,45 @@ Last updated: 2026-08-09
 
 Active branch: `master`
 
-Release target: `v0.5.4`
+Release target: `v0.5.5`
 
-Release status: **releasing now** - three more UI/UX reports against `v0.5.3`
-(cluttered server-detail header, the peer list scrolling the whole view
-instead of just the selection, client-setup option order) are fixed, tested
-and merged into `master`; this checkpoint is being written as part of
-tagging and publishing `v0.5.4`
+Release status: **releasing now** - a real MCP server bug (`list_servers`/
+`peer_list` output schemas rejected by Claude Code's client) reported after
+`v0.5.4`'s documentation pass is fixed, tested and merged into `master`;
+this checkpoint is being written as part of tagging and publishing `v0.5.5`
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
+
+## Completed in the `v0.5.5` release cycle
+
+- Fixed a real MCP server bug the user hit trying to actually use `wgtui
+  mcp` from Claude Code, right after the README's new MCP walkthrough was
+  published: `list_servers` and `peer_list` handlers returned a bare Go
+  slice (`[]ServerSummary`, `[]peerview.Peer`), which `mcp.AddTool`'s
+  reflection-based schema inference turns into an `outputSchema` of
+  `"type": "array"`. MCP requires structured output to be an object -
+  Claude Code's client enforces that and rejected the schema while listing
+  tools (`Invalid input: expected "object"`), which broke discovery for
+  every tool this server registers at once, since `tools/list` returns
+  them all in a single response - not just the two offending tools.
+  - Root cause found by reading `github.com/modelcontextprotocol/go-sdk`'s
+    `AddTool`/schema-inference source directly (`~/go/pkg/mod/.../mcp/server.go`)
+    after noticing `listServers`/`peerList` were the *only* two handlers in
+    `internal/mcpserver` returning a bare slice - every other tool already
+    returned a named struct.
+  - Fix: wrap both in a named result struct (`ServerListResult{ Servers
+    []ServerSummary }`, `PeerListResult{ Peers []peerview.Peer }`) instead
+    of returning the slice directly.
+  - Added `TestToolOutputSchemasAreObjects`
+    (`internal/mcpserver/server_test.go`): connects a real in-memory MCP
+    client/server pair, calls `ListTools`, and asserts every tool's
+    `outputSchema["type"]` is `"object"` (or absent) - exercises the actual
+    wire protocol encode/decode path, not just the Go handler functions
+    directly, so it would have caught this before it shipped.
+- `gofmt`, `go build`, `go vet`, `staticcheck`, `go test ./...`,
+  `go test -race ./...` pass on the changed tree.
 
 ## Completed in the `v0.5.4` release cycle
 
