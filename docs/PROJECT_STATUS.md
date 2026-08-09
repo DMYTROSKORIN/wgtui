@@ -106,6 +106,19 @@ with `git status --short --branch` and `git log -5 --oneline`.
     script is committed alongside it (`docs/assets/demo.tape`,
     parameterized via env vars) so the demo can be re-recorded after future
     UI changes.
+  - **Correction after user review:** the first recording registered the
+    demo server under the real `skorin` SSH login - the username is shown
+    unmasked on screen (unlike the password, which huh always masks), so
+    that was a real personal-data leak into a file meant for public
+    distribution. Fixed by creating a dedicated low-privilege `demo` user
+    on the disposable VM (`useradd -m demo`, sudo group membership,
+    password `demo-password-123`) and re-recording under that account
+    instead - `docs/assets/demo.gif` and the `.tape` script are both
+    updated, and the `.tape` script's header now explicitly warns future
+    re-recordings to use a dedicated account, never the operator's own
+    login. Also cleared the VM's leftover raw WireGuard peers from earlier
+    testing and re-added a single clean "laptop" peer so the demo's peer
+    list isn't cluttered with unmanaged entries.
   - The repo is currently **private** - the new README is written as if
     public-facing, but nobody has changed the actual GitHub visibility
     setting; that's a separate, deliberate decision for the user to make,

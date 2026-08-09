@@ -10,11 +10,16 @@
 # "demopassword123") with one server registered ("Office VPN", reachable,
 # WireGuard installed, at least one peer) - it only unlocks and browses, it
 # doesn't build that state from scratch, so a real (disposable/test) server
-# and its real SSH/sudo password are still needed once to set that up by
-# hand first. Never point this at a vault holding real production servers -
-# the recording shows real key facts on screen (server name, OS, interface
-# state), even though it never shows a real password (huh's password
-# fields mask every character).
+# is still needed once to set that up by hand first. Never point this at a
+# vault holding real production servers - the recording shows real key facts
+# on screen (server name, OS, interface state, SSH username), even though it
+# never shows a real password (huh's password fields mask every character).
+#
+# Register the demo server under a dedicated low-privilege account created
+# just for this (e.g. "demo", `useradd -m demo && usermod -aG sudo demo`),
+# not your own real login user - the SSH username *is* shown on screen
+# unmasked, and a real personal username ending up in a published recording
+# is exactly the mistake this note exists to prevent (it happened once).
 #
 # Run from the repo root:
 #   DEMO_HOME=/path/to/a/throwaway/HOME \
