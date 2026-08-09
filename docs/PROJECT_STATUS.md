@@ -6,12 +6,7 @@ Active branch: `master`
 
 Release target: `v0.5.3`
 
-Release status: **releasing now** - a second round of real-world bug reports
-against `v0.5.1`/`v0.5.2`, this time from Konsole/KDE specifically (raw `P`
-still worked, dropdown menus visibly misaligned for every category but the
-first, server list and peer table not mouse-clickable, wrong sudo password
-losing its own explanation), is fixed, tested and merged into `master`; this
-checkpoint is being written as part of tagging and publishing `v0.5.3`
+Release status: **v0.5.3 published, installed and complete**
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -83,6 +78,18 @@ with `git status --short --branch` and `git log -5 --oneline`.
   (0 called vulnerabilities), `go test ./...`, `go test -race ./...`,
   `CGO_ENABLED=0` Darwin amd64/arm64 cross-builds, and `goreleaser check`
   all pass on the changed tree.
+- Pushed `master` directly (commit `93a910e`); the pre-push Semgrep gate (101
+  rules, 114 files) was clean.
+- Annotated tag `v0.5.3` points at `93a910e` and is pushed to origin. Release
+  workflow run `31285544450` passed all three jobs (`semgrep`, `validate`,
+  `goreleaser`).
+- GitHub Release `v0.5.3` is published (not draft/prerelease) with
+  `checksums.txt`, four Linux/macOS archives, two `.deb` files and two `.rpm`
+  files.
+- `scripts/install.sh v0.5.3` verified the published Linux amd64 archive and
+  installed `wgtui 0.5.3` at `~/.local/bin/wgtui`.
+- Installed `v0.5.3` binary SHA-256:
+  `f94e106646f3e8d0570c7c87badba98040565d9bb760a8143446cfcfd1aa8844`.
 
 ## Completed in the `v0.5.2` release cycle
 
