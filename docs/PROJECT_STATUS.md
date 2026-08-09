@@ -6,10 +6,10 @@ Active branch: `master`
 
 Release target: `v0.5.6`
 
-Release status: **releasing now** - fixes a second, previously-missed
-instance of the header-duplication bug (vault-access + credential-prompt
-screens), caught by the user re-checking work already reported as
-"done"
+Release status: **v0.5.6 published, installed and complete** - fixes a
+second, previously-missed instance of the header-duplication bug
+(vault-access + credential-prompt screens), caught by the user re-checking
+work already reported as "done"
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -50,6 +50,17 @@ with `git status --short --branch` and `git log -5 --oneline`.
 - `gofmt`, `go build`, `go vet`, `staticcheck`, `go test ./...`,
   `go test -race ./...`, `govulncheck`, Darwin cross-builds and
   `goreleaser check` all pass on the changed tree.
+- Pushed `master` directly (commit `7a4ee0a`); the pre-push Semgrep gate
+  (101 rules, 116 files) was clean.
+- Annotated tag `v0.5.6` points at `7a4ee0a` and is pushed to origin.
+  Release workflow run `31314741212` passed all three jobs (`validate`,
+  `semgrep`, `goreleaser`).
+- GitHub Release `v0.5.6` is published with `checksums.txt`, four
+  Linux/macOS archives, one `.deb` and one `.rpm`.
+- `scripts/install.sh v0.5.6` downloaded, checksum-verified and installed
+  `wgtui 0.5.6` at `~/.local/bin/wgtui`.
+- Installed `v0.5.6` binary SHA-256:
+  `afe371d66326dd1364946038105b70cddb4198c6c154a1d0416cafa00539a64f`.
 
 ## Completed in the `v0.5.5` release cycle
 
@@ -616,7 +627,7 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-`v0.5.5` is complete, published and installed; there is no pending release
+`v0.5.6` is complete, published and installed; there is no pending release
 work. Future product work should start from a clean synchronized `master`.
 
 `192.168.122.245` (disposable Ubuntu 24.04 test VM) current state: has a
@@ -635,11 +646,12 @@ The user tests the live installed binary hands-on (Konsole/KDE) and has
 reported real, reproducible bugs across every release cycle so far
 (`v0.5.0`→`v0.5.1`, a bug found while verifying `v0.5.1` itself→`v0.5.2`, a
 further round of Konsole-specific reports→`v0.5.3`, a header/scroll/ordering
-round→`v0.5.4`, and a real MCP schema bug caught by actually trying the
-README's own MCP walkthrough→`v0.5.5`). Every single one turned out to be a
-genuine gap, never a terminal/environment quirk or user error - take reports
-like this at face value and look for a real cause first. Recurring patterns
-worth checking early:
+round→`v0.5.4`, a real MCP schema bug caught by actually trying the
+README's own MCP walkthrough→`v0.5.5`, and a second, missed instance of a
+bug I'd already claimed fixed elsewhere→`v0.5.6`). Every single one turned
+out to be a genuine gap, never a terminal/environment quirk or user error -
+take reports like this at face value and look for a real cause first.
+Recurring patterns worth checking early:
 
 - **"Hotkey doesn't respond" / visual misalignment / "mouse doesn't work
   here":** does a *raw*/independent key handler (`updateServerList`,
@@ -654,6 +666,15 @@ worth checking early:
   in `v0.5.5` only ever showed up in the former. This was a direct, fair
   correction from the user after an earlier claim of "verified" turned out
   to mean "the unit test passes."
+- **Before reporting any UI bug "fixed," grep for every other call site of
+  the same pattern, not just the one screen the report named.** The
+  `v0.5.6` bug existed because the `v0.5.4` header-clutter fix was applied
+  correctly to the server-detail screen but the identical
+  "chrome-bar-then-`appHeader()`" shape was never checked for on the
+  vault-access or credential-prompt screens - it was there the whole time,
+  just unreported because those screens weren't the one originally flagged.
+  A fix scoped to "the screen the user mentioned" is not the same claim as
+  "the bug is fixed" - say which one you actually verified.
 
 ## Publishing note
 
