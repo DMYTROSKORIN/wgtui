@@ -206,6 +206,9 @@ func runServerConfigure(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "Firewall (%s): UDP %d opened.\n", backend, *port)
 	}
+	if backend == "ufw" && osadapter.UfwIsInactive(ctx, client, prompts) {
+		fmt.Fprintf(stdout, "Note: ufw is disabled - the UDP %d rule is saved but won't take effect until you run `ufw enable` on the server.\n", *port)
+	}
 
 	if err := osadapter.EnableAndStart(ctx, client, prompts, *iface); err != nil {
 		fmt.Fprintf(stderr, "wgtui server configure: %v\n", err)

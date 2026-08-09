@@ -139,6 +139,24 @@ func portLooksOpen(backend, statusOutput, port string) bool {
 	}
 }
 
+// UfwIsInactive reports whether ufw is present as an active systemd service
+// but its own firewall is logically disabled (`ufw disable`). This is a
+// real footgun: `systemctl is-active ufw` is "active" whenever ufw.service
+// runs, even after `ufw disable`, so DetectFirewallBackend legitimately
+// picks "ufw" and `ufw allow <port>/udp` records the rule - but ufw drops
+// all its rules while disabled, so the port is NOT actually open until
+// someone runs `ufw enable`. Callers surface this as a warning so the
+// operator isn't left believing the port is open when it isn't. Best
+// effort: any read error returns false (don't invent a warning we're
+// unsure about).
+func UfwIsInactive(ctx context.Context, client *sshtransport.Client, prompts sshtransport.Prompts) bool {
+	res, err := client.RunSudo(ctx, "ufw status", prompts)
+	if err != nil || res.ExitCode != 0 {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(res.Stdout)), "status: inactive")
+}
+
 // ApplyFirewallPlan runs plan's commands in order, stopping at the first
 // failure.
 func ApplyFirewallPlan(ctx context.Context, client *sshtransport.Client, prompts sshtransport.Prompts, plan FirewallPlan) error {

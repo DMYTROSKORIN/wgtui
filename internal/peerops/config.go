@@ -9,12 +9,33 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"strings"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/sshtransport"
 	"github.com/DMYTROSKORIN/wgtui/internal/transaction"
 	"github.com/DMYTROSKORIN/wgtui/internal/wgconfig"
 )
+
+// validInterfaceName mirrors the identical check in internal/discovery,
+// internal/osadapter and internal/transaction. Duplicated deliberately per
+// SPEC.md §23.1: this package is the one concatenating the interface name
+// into a remote command ("cat /etc/wireguard/<iface>.conf"), so it
+// validates at that point of use rather than trusting an upstream caller -
+// the name can arrive from an operator's --interface flag or, on the
+// auto-detect path, straight from the remote server's own `wg show
+// interfaces` output (THREAT_MODEL.md T8: input sourced from the server
+// itself is still untrusted).
+var validInterfaceName = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,15}$`)
+
+// shellQuote wraps s in POSIX single quotes, escaping any embedded single
+// quote - the standard technique for making a string inert to shell
+// interpretation. Matches the identical helpers in internal/transaction
+// and internal/osadapter (each package quotes independently rather than
+// sharing a cross-package helper for these few lines).
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
 
 // CurrentConfig is a snapshot of one interface's live state, fetched
 // fresh immediately before building a mutation Plan.
@@ -35,6 +56,9 @@ type CurrentConfig struct {
 // than guessing if there is more than one.
 func ResolveInterface(ctx context.Context, client *sshtransport.Client, hint string) (string, error) {
 	if hint != "" {
+		if !validInterfaceName.MatchString(hint) {
+			return "", fmt.Errorf("invalid interface name %q", hint)
+		}
 		return hint, nil
 	}
 	res, err := client.RunCommand(ctx, "wg show interfaces")
@@ -46,6 +70,9 @@ func ResolveInterface(ctx context.Context, client *sshtransport.Client, hint str
 	case 0:
 		return "", fmt.Errorf("no active WireGuard interfaces found")
 	case 1:
+		if !validInterfaceName.MatchString(names[0]) {
+			return "", fmt.Errorf("server reported an interface with an unsafe name %q", names[0])
+		}
 		return names[0], nil
 	default:
 		return "", fmt.Errorf("multiple active interfaces (%s); specify one with --interface", strings.Join(names, ", "))
@@ -55,9 +82,16 @@ func ResolveInterface(ctx context.Context, client *sshtransport.Client, hint str
 // FetchCurrentConfig reads the persistent config and runtime dump for
 // iface and combines them into a CurrentConfig ready to base a Plan on.
 func FetchCurrentConfig(ctx context.Context, client *sshtransport.Client, prompts sshtransport.Prompts, iface string) (CurrentConfig, error) {
+	// Validate again at the point of use, even though the usual caller path
+	// runs through ResolveInterface: iface is about to be concatenated into
+	// a remote command, and a bad value must never reach the shell (SPEC.md
+	// §23.1). configPath is single-quoted as a second, independent layer.
+	if !validInterfaceName.MatchString(iface) {
+		return CurrentConfig{}, fmt.Errorf("invalid interface name %q", iface)
+	}
 	configPath := "/etc/wireguard/" + iface + ".conf"
 
-	confRes, err := client.RunSudo(ctx, "cat "+configPath, prompts)
+	confRes, err := client.RunSudo(ctx, "cat "+shellQuote(configPath), prompts)
 	if err != nil {
 		return CurrentConfig{}, fmt.Errorf("read %s: %w", configPath, err)
 	}

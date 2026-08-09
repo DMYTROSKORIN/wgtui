@@ -292,6 +292,9 @@ func (m *model) applyConfigure(iface string, serverAddr netip.Prefix, port int, 
 					}
 					steps = append(steps, fmt.Sprintf("Firewall (%s): UDP %d opened.", backend, port))
 				}
+				if backend == "ufw" && osadapter.UfwIsInactive(ctx, sess.client, sess.prompts) {
+					steps = append(steps, fmt.Sprintf("Note: ufw is disabled - the UDP %d rule is saved but won't take effect until you run `ufw enable` on the server.", port))
+				}
 			}
 
 			if err := osadapter.EnableAndStart(ctx, sess.client, sess.prompts, iface); err != nil {

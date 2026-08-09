@@ -3,6 +3,43 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.5.8] - 2026-08-09
+
+Security-hardening release addressing the findings of a full project audit
+(`~/Documents/wgtui-audit-2026-08-09.md`). No critical or high-severity
+issues were found; these are the low-severity and defense-in-depth fixes.
+
+### Security
+
+- The local vault now binds its Argon2 parameters and salt into the
+  AES-256-GCM additional authenticated data (new on-disk format version 2).
+  Previously those fields lived in the file's plaintext header outside the
+  authentication tag; tampering with them now fails decryption. Version-1
+  vaults are still read transparently and upgrade to version 2 on their next
+  save. (Not a practical exploit before - a wrong parameter just produced a
+  wrong key and a failed tag check - but proper defense in depth.)
+- The WireGuard interface name is now validated (`^[a-zA-Z0-9_-]{1,15}$`)
+  and the config path shell-quoted before being used in the config-read
+  command (`peerops.ResolveInterface`/`FetchCurrentConfig`). The write path
+  already validated; the read path did not, leaving a latent shell-injection
+  gap for an operator's own `--interface` value or an interface name sourced
+  from a compromised server. Consistent with the project's own SPEC §23.1.
+
+### Fixed
+
+- The `peer_add` MCP tool description promised it "returns a ready-to-import
+  client profile", but by deliberate (safer) design the result contains no
+  secret - the profile is saved to the local vault and retrieved via `wgtui
+  peer export`. Description corrected to match.
+
+### Added
+
+- After opening the WireGuard UDP port on a `ufw` backend, wgtui now warns
+  when `ufw` itself is disabled (`ufw disable`): the rule is saved but has no
+  effect until `ufw enable` is run. `systemctl is-active ufw` reports the
+  service as active even when the firewall is logically off, which otherwise
+  left the port looking open when it was not.
+
 ## [0.5.7] - 2026-08-09
 
 ### Changed

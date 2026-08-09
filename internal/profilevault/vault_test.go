@@ -1,13 +1,45 @@
 package profilevault
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"golang.org/x/crypto/argon2"
+
 	"github.com/DMYTROSKORIN/wgtui/internal/domain"
 )
+
+// argonIDKeyForTest derives a key the same way the vault does, for building
+// a synthetic legacy (version-1) vault in tests.
+func argonIDKeyForTest(t *testing.T, password string, salt []byte) []byte {
+	t.Helper()
+	return argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
+}
+
+// sealForTest AES-GCM-seals plaintext with key and the given AAD (nil for a
+// legacy version-1 vault), returning a fresh nonce and the ciphertext.
+func sealForTest(t *testing.T, key, plaintext, aad []byte) (nonce, ciphertext []byte) {
+	t.Helper()
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonce = make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		t.Fatal(err)
+	}
+	return nonce, gcm.Seal(nil, nonce, plaintext, aad)
+}
 
 func TestVault_CreateSaveOpenRoundTrip(t *testing.T) {
 	dir := t.TempDir()
@@ -159,5 +191,85 @@ func TestVault_RemoveServer(t *testing.T) {
 	}
 	if v.RemoveServer("does-not-exist") {
 		t.Fatal("RemoveServer on unknown ID = true, want false")
+	}
+}
+
+// TestVault_WritesVersion2WithBoundParams guards F4: Save must write the
+// version-2 format that binds the Argon2 parameters into the GCM AAD.
+func TestVault_WritesVersion2WithBoundParams(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.json")
+	v, _ := New("a-master-password")
+	if err := v.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	raw, _ := os.ReadFile(path)
+	var vf vaultFile
+	if err := json.Unmarshal(raw, &vf); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if vf.Version != 2 {
+		t.Fatalf("vault version = %d, want 2", vf.Version)
+	}
+}
+
+// TestVault_TamperedArgonParamsFailToOpen guards F4: editing the KDF
+// parameters in the (plaintext) header of a version-2 vault must break
+// authentication rather than silently changing how a future re-encrypt
+// derives its key.
+func TestVault_TamperedArgonParamsFailToOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.json")
+	v, _ := New("a-master-password")
+	if err := v.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	raw, _ := os.ReadFile(path)
+	var vf vaultFile
+	if err := json.Unmarshal(raw, &vf); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	vf.ArgonMemKB = 8 // downgrade the cost parameter in the header
+	tampered, _ := json.Marshal(vf)
+	if err := os.WriteFile(path, tampered, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(path, "a-master-password"); err == nil {
+		t.Fatal("Open accepted a vault whose Argon2 parameters were tampered with")
+	}
+}
+
+// TestVault_LegacyVersion1StillOpens guards F4 backward compatibility: a
+// version-1 vault (sealed with no AAD) must still open with the right
+// password, and re-saving must upgrade it to version 2.
+func TestVault_LegacyVersion1StillOpens(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vault.json")
+
+	// Hand-build a version-1 vault the old way: seal with nil AAD.
+	salt := make([]byte, saltLen)
+	key := argonIDKeyForTest(t, "legacy-pass", salt)
+	nonce, ciphertext := sealForTest(t, key, []byte(`{"servers":[{"id":"old"}]}`), nil)
+	vf := vaultFile{Version: 1, Salt: salt, ArgonTime: argonTime, ArgonMemKB: argonMemory, ArgonLanes: argonThreads, Nonce: nonce, Ciphertext: ciphertext}
+	out, _ := json.MarshalIndent(vf, "", "  ")
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	opened, err := Open(path, "legacy-pass")
+	if err != nil {
+		t.Fatalf("Open legacy v1 vault: %v", err)
+	}
+	if len(opened.Registry.Servers) != 1 || opened.Registry.Servers[0].ID != "old" {
+		t.Fatalf("legacy registry not read back: %+v", opened.Registry)
+	}
+	if err := opened.Save(path); err != nil {
+		t.Fatalf("re-save: %v", err)
+	}
+	raw, _ := os.ReadFile(path)
+	var reread vaultFile
+	_ = json.Unmarshal(raw, &reread)
+	if reread.Version != 2 {
+		t.Fatalf("re-saved legacy vault stayed at version %d, want upgrade to 2", reread.Version)
+	}
+	if _, err := Open(path, "legacy-pass"); err != nil {
+		t.Fatalf("Open after upgrade: %v", err)
 	}
 }

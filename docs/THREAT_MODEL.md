@@ -104,10 +104,22 @@ exactly the class of failure that can cut off the SSH session used to fix it.
 every client private key ever issued.
 
 *Mitigation:* Vault is encrypted at rest with a master password set on first run (spec
-§30.4), directory `0700`/files `0600` as defense in depth, atomic writes so a crash never
-leaves a half-written plaintext profile. QR code rendering is called out explicitly as
-displaying a secret and is never written to terminal scrollback history or a log (spec
-§7.4).
+§30.4): the key is derived with Argon2id (time=3, 64 MiB, 4 lanes → AES-256) and the
+payload is sealed with AES-256-GCM using a random per-save nonce. Since v0.5.8 the vault
+header's KDF parameters and salt are bound into the GCM additional authenticated data
+(format version 2), so tampering with those otherwise-plaintext header fields fails
+decryption instead of silently influencing a later re-encrypt; version-1 vaults are still
+read and upgrade to version 2 on their next save. Directory `0700`/files `0600` as defense
+in depth, atomic writes so a crash never leaves a half-written plaintext profile. QR code
+rendering is called out explicitly as displaying a secret and is never written to terminal
+scrollback history or a log (spec §7.4).
+
+*Accepted residual:* the master password is held in this process's memory as a Go string
+for the process lifetime and cannot be actively zeroed (Go strings are immutable; erasing
+in place would require cgo/`mlock`). SSH/sudo passwords, which *are* held as `[]byte`, are
+zeroed when their session ends. An attacker who can already read this running same-user
+process's memory (ptrace, core dump) can recover the master password regardless — the same
+boundary noted below for a compromised local account.
 
 ### T8 — Malicious or malformed remote config
 

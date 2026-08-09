@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,6 +34,33 @@ const (
 	argonKeyLen  = 32 // AES-256
 	saltLen      = 16
 )
+
+// currentVaultVersion is the format version Save writes. Version 2 binds
+// the KDF parameters and salt into the AES-GCM additional authenticated
+// data (see vaultAAD); version 1 files (written before this) authenticated
+// only the ciphertext and are still read transparently - they upgrade to 2
+// on the next Save.
+const currentVaultVersion = 2
+
+// vaultAAD builds the GCM additional authenticated data that binds the KDF
+// header fields (version, Argon2 cost parameters, salt) to the ciphertext.
+// These fields live in the file's plaintext header - outside the ciphertext
+// - so without this an attacker with write access could alter them (e.g.
+// downgrade the Argon2 cost a future re-encrypt would use) without
+// invalidating the authentication tag. Feeding them as AAD makes any such
+// edit fail decryption instead. Version 1 vaults were sealed with no AAD;
+// Open passes nil for them so they still open, and the next Save rewrites
+// them as version 2.
+func vaultAAD(version int, salt []byte, argonT, argonMemKB uint32, argonLanes uint8) []byte {
+	b := make([]byte, 0, 12+4+4+4+1+len(salt))
+	b = append(b, []byte("wgtui-vault\x00")...)
+	b = binary.BigEndian.AppendUint32(b, uint32(version))
+	b = binary.BigEndian.AppendUint32(b, argonT)
+	b = binary.BigEndian.AppendUint32(b, argonMemKB)
+	b = append(b, argonLanes)
+	b = append(b, salt...)
+	return b
+}
 
 // Registry is the vault's plaintext payload once decrypted.
 type Registry struct {
@@ -152,7 +180,11 @@ func Open(path, masterPassword string) (*Vault, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init GCM: %w", err)
 	}
-	plaintext, err := gcm.Open(nil, vf.Nonce, vf.Ciphertext, nil)
+	var aad []byte
+	if vf.Version >= 2 {
+		aad = vaultAAD(vf.Version, vf.Salt, vf.ArgonTime, vf.ArgonMemKB, vf.ArgonLanes)
+	}
+	plaintext, err := gcm.Open(nil, vf.Nonce, vf.Ciphertext, aad)
 	if err != nil {
 		return nil, ErrWrongPassword
 	}
@@ -190,10 +222,11 @@ func (v *Vault) Save(path string) error {
 	if err != nil {
 		return fmt.Errorf("marshal registry: %w", err)
 	}
-	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
+	aad := vaultAAD(currentVaultVersion, v.salt, argonTime, argonMemory, argonThreads)
+	ciphertext := gcm.Seal(nil, nonce, plaintext, aad)
 
 	vf := vaultFile{
-		Version:    1,
+		Version:    currentVaultVersion,
 		Salt:       v.salt,
 		ArgonTime:  argonTime,
 		ArgonMemKB: argonMemory,

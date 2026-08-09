@@ -4,16 +4,56 @@ Last updated: 2026-08-09
 
 Active branch: `master`
 
-Release target: `v0.5.7`
+Release target: `v0.5.8`
 
-Release status: **v0.5.7 published, installed and complete** - moves the
-"wgtui vX.Y.Z" brand/version line off the top of nearly every screen and
-down to just above the bottom key/action bar, after the user pointed at a
-screenshot showing it was still at the top of the main server list screen
+Release status: **releasing now** - security-hardening release fixing the
+low-severity and defense-in-depth findings from a full project audit
+(`~/Documents/wgtui-audit-2026-08-09.md`; no critical/high issues found)
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
+
+## Completed in the `v0.5.8` release cycle
+
+- Ran a full security/stability/UX/MCP audit of the project (report saved to
+  `~/Documents/wgtui-audit-2026-08-09.md`). No critical or high-severity
+  vulnerabilities. semgrep/staticcheck/govulncheck clean; all 24 gosec hits
+  were false positives; `-race` clean; the wgconfig parsers survived ~5.5M
+  fuzz executions with no panic. The install wizard was verified end-to-end
+  live on the test VM (WireGuard fully removed with `apt-get purge`, then
+  reinstalled through the TUI: install→configure→peer→QR→export), and the
+  MCP layer was verified with the real `claude` CLI (confirm-gate really
+  does not mutate at `confirm=false`; tool responses carry no secrets, only
+  the public key). This cycle then fixed every finding the audit raised:
+- **F4 (defense in depth):** the vault now binds its Argon2 parameters and
+  salt into the AES-256-GCM AAD (new format version 2, `internal/profilevault`).
+  Version-1 vaults still open and upgrade to version 2 on the next save.
+  Verified live: the real v0.5.7-created audit vault (version 1) opened with
+  the new binary and upgraded to version 2 after a change-password re-encrypt,
+  and reopened cleanly through the AAD read path. Tests:
+  `TestVault_WritesVersion2WithBoundParams`,
+  `TestVault_TamperedArgonParamsFailToOpen`,
+  `TestVault_LegacyVersion1StillOpens`.
+- **F2 (hardening):** interface name validated (`^[a-zA-Z0-9_-]{1,15}$`) and
+  config path shell-quoted before the config-read command in
+  `peerops.ResolveInterface`/`FetchCurrentConfig`. The write path
+  (`transaction/script.go`) and discovery already validated; the read path
+  did not - a latent injection gap for an operator's `--interface` value or a
+  server-sourced interface name (THREAT_MODEL T8). Tests in
+  `internal/peerops/config_test.go`.
+- **F1:** corrected the `peer_add` MCP tool description, which promised a
+  client profile the result deliberately (and safely) omits.
+- **F3:** after `ufw allow <port>/udp`, warn when ufw is disabled (`ufw
+  disable`) - `systemctl is-active ufw` is "active" even then, so the rule
+  was added but not enforced. Surfaced in both the TUI and CLI configure
+  flows (`osadapter.UfwIsInactive`).
+- **F5 (accepted residual, documented):** the master password is held as a
+  Go string and cannot be zeroed in pure Go; documented in
+  `docs/THREAT_MODEL.md` T7 alongside the SSH/sudo `[]byte` zeroing that
+  *is* done.
+- `gofmt`, `go build`, `go vet`, `go test ./...`, `go test -race`,
+  `staticcheck`, `govulncheck`, semgrep all clean on the changed tree.
 
 ## Completed in the `v0.5.7` release cycle
 

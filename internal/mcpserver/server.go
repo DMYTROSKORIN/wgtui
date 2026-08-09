@@ -68,8 +68,11 @@ func New(v *profilevault.Vault, vaultPath string) *mcp.Server {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "peer_add",
 		Description: "Add a new WireGuard peer: generates a client keypair locally (the private key never " +
-			"leaves this process) and a preshared key, allocates the next free VPN address, and returns a " +
-			"ready-to-import client profile. With confirm=false (the default), only computes and returns the " +
+			"leaves this process) and a preshared key, and allocates the next free VPN address. The result " +
+			"reports only non-secret fields (name, public key, VPN address); the client profile - which " +
+			"contains the private key - is saved to the local vault and is deliberately NOT returned here, so " +
+			"no secret lands in this conversation. Retrieve the ready-to-import .conf afterwards with the " +
+			"`wgtui peer export` CLI command. With confirm=false (the default), only computes and returns the " +
 			"plan - nothing on the server changes and no keys are generated. To actually apply it, call again " +
 			"with the exact same arguments plus confirm=true. Never set confirm=true unless the user has seen " +
 			"the plan from a confirm=false call and approved it.",
