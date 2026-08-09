@@ -3,6 +3,16 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.5.7] - 2026-08-09
+
+### Changed
+
+- The "wgtui vX.Y.Z" brand/version line rendered as the very first line of
+  nearly every screen (server list, help, every form, the vault-unlock
+  screen, every credential prompt), directly under the top menu bar -
+  exactly the clutter reported multiple times already. It now sits just
+  above the bottom key/action bar instead, on every one of those screens.
+
 ## [0.5.6] - 2026-08-09
 
 ### Fixed

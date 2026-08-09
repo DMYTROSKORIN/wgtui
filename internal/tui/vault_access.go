@@ -99,12 +99,11 @@ func (m *model) viewVaultAccess() string {
 	if m.vaultFormError != "" {
 		content += "\n" + dangerStyle.Render(m.vaultFormError)
 	}
-	// One header line, not two: this bar already carries the brand,
-	// version and section title (" wgtui X.Y.Z · secure local access") -
-	// appHeader("Security") used to repeat all three immediately below it,
-	// which is exactly the clutter reported against the server-detail
-	// header in a different spot (see docs/PROJECT_STATUS.md).
+	// One header line, not two (see v0.5.6's fix), and at the bottom of the
+	// screen, not the top - the same "brand/version chrome lives just above
+	// the key bar, not as the first thing on screen" placement every other
+	// screen uses (see appHeader's callers in view.go).
 	header := chromeStyle.Width(m.width).Render(" wgtui " + strings.TrimPrefix(Version, "v") + "  ·  secure local access")
-	return header + "\n" + fullPanel(m, content) + "\n" +
+	return fullPanel(m, content) + "\n" + header + "\n" +
 		keyBar(m.width, "Enter Continue", "Esc Quit", "Ctrl+C Quit")
 }

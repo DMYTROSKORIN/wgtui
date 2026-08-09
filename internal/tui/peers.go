@@ -572,8 +572,8 @@ func (m *model) viewActionMenu() string {
 			terminalText(peerview.ShortenKey(p.PublicKey)))
 	}
 	card += strings.TrimSuffix(menu.String(), "\n")
-	return appHeader(m.selected.DisplayName+" / Peers") + "\n" +
-		fullPanel(m, card) + "\n" +
+	return fullPanel(m, card) + "\n" +
+		appHeader(m.selected.DisplayName+" / Peers") + "\n" +
 		keyBar(m.width, "↑/↓ Select", "Enter Continue", "Esc Back", "Ctrl+C Quit")
 }
 

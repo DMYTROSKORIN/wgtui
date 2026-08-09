@@ -248,7 +248,7 @@ func (m *model) viewCredentialPrompt() string {
 		content += wrapPlainText(request.detail, max(30, m.width-12), 5) + "\n\n"
 	}
 	content += m.credentialForm.View() + "\n\n" + dangerStyle.Render("The value stays only in memory for this server session.")
-	// One header line, not two - see viewVaultAccess's comment for why.
+	// One header line, not two, at the bottom - see viewVaultAccess's comment for why.
 	header := chromeStyle.Width(m.width).Render(fmt.Sprintf(" wgtui %s  ·  %s", strings.TrimPrefix(Version, "v"), title))
-	return header + "\n" + fullPanel(m, content) + "\n" + keyBar(m.width, "Enter Continue", "Esc Cancel", "Ctrl+C Quit")
+	return fullPanel(m, content) + "\n" + header + "\n" + keyBar(m.width, "Enter Continue", "Esc Cancel", "Ctrl+C Quit")
 }

@@ -257,6 +257,59 @@ func TestAppHeaderIdentifiesRunningVersion(t *testing.T) {
 	}
 }
 
+// TestBrandVersionLineSitsAboveFooterNotAtTop guards a real bug: the
+// "wgtui vX.Y.Z" brand/version line rendered as the very first line of
+// every screen, directly under the top menu bar - crowding the screen
+// exactly the way the user asked to have fixed. It needs to sit just above
+// the bottom key/action bar instead. Spans every screen shape that builds
+// this line (dashboard screens via appHeader, and the vault-access /
+// credential-prompt screens via their own chrome bar), since the same
+// fix applied to only one of them was exactly the kind of partial fix
+// that shipped in v0.5.4 and had to be redone in v0.5.6.
+func TestBrandVersionLineSitsAboveFooterNotAtTop(t *testing.T) {
+	brandLine := func(t *testing.T, view string) (first bool, nearBottom bool) {
+		t.Helper()
+		lines := strings.Split(ansi.Strip(view), "\n")
+		var content []string
+		for _, l := range lines {
+			if strings.TrimSpace(l) != "" {
+				content = append(content, l)
+			}
+		}
+		if len(content) == 0 {
+			return false, false
+		}
+		first = strings.Contains(content[0], "wgtui")
+		for i := max(0, len(content)-2); i < len(content); i++ {
+			if strings.Contains(content[i], "wgtui") {
+				nearBottom = true
+			}
+		}
+		return first, nearBottom
+	}
+
+	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office", SSHHostOrAlias: "vpn.example.test"})
+	m.Update(tea.WindowSizeMsg{Width: 110, Height: 32})
+	if first, bottom := brandLine(t, m.viewServerList()); first || !bottom {
+		t.Errorf("server list: brand line first=%v (want false) nearBottom=%v (want true):\n%s", first, bottom, ansi.Strip(m.viewServerList()))
+	}
+	if first, bottom := brandLine(t, m.viewHelp()); first || !bottom {
+		t.Errorf("help: brand line first=%v (want false) nearBottom=%v (want true):\n%s", first, bottom, ansi.Strip(m.viewHelp()))
+	}
+
+	locked := newLockedModel(t.TempDir()+"/vault.json", true)
+	locked.width, locked.height = 100, 30
+	if first, bottom := brandLine(t, locked.viewVaultAccess()); first || !bottom {
+		t.Errorf("vault access: brand line first=%v (want false) nearBottom=%v (want true):\n%s", first, bottom, ansi.Strip(locked.viewVaultAccess()))
+	}
+
+	response := make(chan credentialResponse, 1)
+	m.beginCredentialPrompt(credentialRequestMsg{kind: credentialSSHPassword, target: "Office", response: response})
+	if first, bottom := brandLine(t, m.viewCredentialPrompt()); first || !bottom {
+		t.Errorf("credential prompt: brand line first=%v (want false) nearBottom=%v (want true):\n%s", first, bottom, ansi.Strip(m.viewCredentialPrompt()))
+	}
+}
+
 func assertViewFits(t *testing.T, view string, width, height int) {
 	t.Helper()
 	lines := strings.Split(view, "\n")

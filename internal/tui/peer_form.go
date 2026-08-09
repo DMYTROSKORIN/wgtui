@@ -340,5 +340,5 @@ func (m *model) viewPeerReveal() string {
 	if m.revealMode != "" {
 		footer = keyBar(m.width, "Esc Back", "Enter Back", "Ctrl+C Quit")
 	}
-	return appHeader(m.selected.DisplayName+" / "+m.revealName) + "\n" + fullPanel(m, b.String()) + "\n" + footer
+	return fullPanel(m, b.String()) + "\n" + appHeader(m.selected.DisplayName+" / "+m.revealName) + "\n" + footer
 }

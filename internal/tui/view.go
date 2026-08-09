@@ -213,7 +213,7 @@ func (m *model) viewServerList() string {
 				"\n\n" + dimStyle.Render("Press Enter to open this server.")
 		}
 		content := titleStyle.Render("Servers") + "\n\n" + m.viewServerListRows(visible) + details
-		return appHeader("Server manager") + "\n" + fullPanel(m, content) + "\n" +
+		return fullPanel(m, content) + "\n" + appHeader("Server manager") + "\n" +
 			m.commanderActionBar()
 	}
 
@@ -242,7 +242,7 @@ func (m *model) viewServerList() string {
 	}
 	right := panelStyle.Width(rightWidth).Height(panelHeight).Render(details)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
-	return appHeader("Server manager") + "\n" + body + "\n" + m.commanderActionBar()
+	return body + "\n" + appHeader("Server manager") + "\n" + m.commanderActionBar()
 }
 
 func (m *model) viewServerDetail() string {
@@ -463,7 +463,7 @@ func keyHint(key, label string) string {
 }
 
 func formScreen(m *model, title, content string, keys ...string) string {
-	return appHeader(title) + "\n" + fullPanel(m, content) + "\n" + keyBar(m.width, keys...)
+	return fullPanel(m, content) + "\n" + appHeader(title) + "\n" + keyBar(m.width, keys...)
 }
 
 func fullPanel(m *model, content string) string {
@@ -509,7 +509,7 @@ func (m *model) viewHelp() string {
 			keyHint("R", "Refresh") + "   " + keyHint("D", "Diagnose") + "\n" +
 			keyHint("M", "Command menu") + "   " + keyHint("Q", "Quit safely") + "\n" +
 			keyHint("↑/↓", "Move selection") + "   " + keyHint("Esc", "Back / cancel")
-		return appHeader("Help") + "\n" + fullPanel(m, text) + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
+		return fullPanel(m, text) + "\n" + appHeader("Help") + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
 	}
 	text := titleStyle.Render("Keyboard help") + "\n\n" +
 		textStyle.Render("Two separate accelerator systems, never the same key:") + "\n" +
@@ -526,7 +526,7 @@ func (m *model) viewHelp() string {
 		dimStyle.Render("The same letter can mean different things on different screens - e.g. plain O opens the selected server on the server list, while plain O revokes the selected peer on the Peers tab.") + "\n" +
 		dimStyle.Render("Mouse clicks on either bar work the same as their keys.") + "\n" +
 		dimStyle.Render("Network and destructive operations always show their own status or confirmation.")
-	return appHeader("Help") + "\n" + fullPanel(m, text) + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
+	return fullPanel(m, text) + "\n" + appHeader("Help") + "\n" + keyBar(m.width, "Esc Close", "Ctrl+C Quit")
 }
 
 func (m *model) viewOverviewTab() string {
@@ -675,8 +675,8 @@ func (m *model) viewConfirm() string {
 		b.WriteString(m.confirmPlan + "\n\n")
 	}
 	b.WriteString(m.confirmForm.View())
-	return appHeader(m.selected.DisplayName) + "\n" +
-		fullPanel(m, b.String()) + "\n" +
+	return fullPanel(m, b.String()) + "\n" +
+		appHeader(m.selected.DisplayName) + "\n" +
 		keyBar(m.width, "←/→ Choose", "Enter Confirm", "Esc Cancel", "Ctrl+C Quit")
 }
 
@@ -684,10 +684,10 @@ func (m *model) viewConfirm() string {
 // remote work runs asynchronously while SSH/sudo questions appear as
 // credential modals inside Bubble Tea's alternate screen.
 func (m *model) viewApplying() string {
-	return appHeader(m.selected.DisplayName) + "\n" +
-		fullPanel(m,
-			titleStyle.Render("Applying change")+"\n\n"+textStyle.Render(m.confirmTitle)+"\n\n"+
-				dimStyle.Render("Please wait. The operation is validated and rolled back automatically on failure."))
+	return fullPanel(m,
+		titleStyle.Render("Applying change")+"\n\n"+textStyle.Render(m.confirmTitle)+"\n\n"+
+			dimStyle.Render("Please wait. The operation is validated and rolled back automatically on failure.")) +
+		"\n" + appHeader(m.selected.DisplayName)
 }
 
 func orDefault(s, def string) string {

@@ -4,16 +4,65 @@ Last updated: 2026-08-09
 
 Active branch: `master`
 
-Release target: `v0.5.6`
+Release target: `v0.5.7`
 
-Release status: **v0.5.6 published, installed and complete** - fixes a
-second, previously-missed instance of the header-duplication bug
-(vault-access + credential-prompt screens), caught by the user re-checking
-work already reported as "done"
+Release status: **releasing now** - moves the "wgtui vX.Y.Z" brand/version
+line off the top of nearly every screen and down to just above the bottom
+key/action bar, after the user pointed at a screenshot showing it was
+still at the top of the main server list screen
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
+
+## Completed in the `v0.5.7` release cycle
+
+- After `v0.5.6` shipped ("de-duplicate the header"), the user sent a
+  screenshot (`~/Pictures/Error/Screenshot_20260809_153820.png`) of the
+  server-list ("Server manager") screen with a red arrow drawn from the
+  `wgtui v0.5.6  Server manager` line at the very top all the way down to
+  the bottom action bar - i.e. "move this line down there", not just
+  "stop duplicating it". `v0.5.4`/`v0.5.6` had only ever deduplicated or
+  nudged this line by one row (into `tabsLine`'s trailing slot on the
+  server-detail screen specifically); the actual, literal ask - move the
+  brand/version chrome to the bottom of the screen - had never been done
+  anywhere.
+  - Every screen built from the shared `appHeader(section)` helper (server
+    list compact/wide, `formScreen` - used by seven form screens:
+    configure, add peer, revoke confirm, export form, change password,
+    server add/edit, remove-server confirm -, help compact/wide, confirm,
+    applying, peer-reveal, peers-tab-compact) rendered that line as the
+    very first line of the screen, directly under the top commander menu
+    bar. Fixed by swapping the concatenation order in every one of those
+    call sites: content panel first, then the brand line, then the
+    existing key/action bar - a pure reordering of already-computed
+    strings, so total line counts (and therefore `fullPanelHeight`/
+    `dashboardPanelHeight`'s reserved-row math and `anchorFooter`'s bottom
+    anchoring) are unaffected.
+  - The vault-access and credential-prompt screens build their own colored
+    `chromeStyle` bar rather than calling `appHeader`, but had the exact
+    same "brand line is the first line" placement - given the same
+    call-everywhere-you-can-find-the-pattern lesson `v0.5.6` was
+    specifically about, moved those too rather than waiting for a third
+    bug report on the same theme.
+  - Left `internal/tui/view.go`'s `viewServerHeader`/`tabsLine` trailing
+    version+connection-badge placement on the server-detail screen as is -
+    that screen's top row no longer contains the word "wgtui" at all (the
+    `v0.5.4` fix already removed it), so it isn't an instance of this bug;
+    revisit only if the user flags it specifically.
+  - Live-verified in tmux (scratch `HOME`, fresh vault): vault-unlock
+    screen, empty server list, add-server form and help screen all show
+    the brand/version line directly above the bottom bar, never at the
+    top.
+  - Added `TestBrandVersionLineSitsAboveFooterNotAtTop`
+    (`internal/tui/dashboard_test.go`): renders the server list, help,
+    vault-access and credential-prompt screens and asserts the brand line
+    is never the first non-blank line and is one of the last two.
+    Confirmed via `git stash` (fix files only, keeping the new test) that
+    it fails against the pre-fix code with exactly the failure shape the
+    screenshot showed, and passes with the fix.
+- `gofmt`, `go build`, `go vet`, `go test ./...`, `go test -race ./...`,
+  `staticcheck`, `govulncheck` all pass on the changed tree.
 
 ## Completed in the `v0.5.6` release cycle
 
