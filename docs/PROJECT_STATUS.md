@@ -6,10 +6,10 @@ Active branch: `master`
 
 Release target: `v0.5.7`
 
-Release status: **releasing now** - moves the "wgtui vX.Y.Z" brand/version
-line off the top of nearly every screen and down to just above the bottom
-key/action bar, after the user pointed at a screenshot showing it was
-still at the top of the main server list screen
+Release status: **v0.5.7 published, installed and complete** - moves the
+"wgtui vX.Y.Z" brand/version line off the top of nearly every screen and
+down to just above the bottom key/action bar, after the user pointed at a
+screenshot showing it was still at the top of the main server list screen
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -63,6 +63,21 @@ with `git status --short --branch` and `git log -5 --oneline`.
     screenshot showed, and passes with the fix.
 - `gofmt`, `go build`, `go vet`, `go test ./...`, `go test -race ./...`,
   `staticcheck`, `govulncheck` all pass on the changed tree.
+- Pushed `master` directly (commit `43b720d`); the pre-push Semgrep gate
+  (101 rules, 116 files) was clean.
+- Annotated tag `v0.5.7` points at `43b720d` and is pushed to origin.
+  Release workflow run `31316708774` passed all three jobs (`semgrep`,
+  `validate`, `goreleaser`).
+- GitHub Release `v0.5.7` is published with `checksums.txt` and the usual
+  Linux/macOS archives, `.deb` and `.rpm`.
+- `scripts/install.sh v0.5.7` downloaded, checksum-verified and installed
+  `wgtui 0.5.7` at `~/.local/bin/wgtui`.
+- Installed `v0.5.7` binary SHA-256:
+  `d4e7c2ad324d386cbed07f4193b3f782b0bb61f1e6981fd14fc3ed660ff17158`.
+- Live-verified against the actual installed binary (not just the dev
+  build used earlier), scratch `HOME`, fresh vault: server list screen
+  shows `wgtui v0.5.7  Server manager` directly above the bottom action
+  bar - the same screen and scenario the user's screenshot showed broken.
 
 ## Completed in the `v0.5.6` release cycle
 
@@ -676,7 +691,7 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-`v0.5.6` is complete, published and installed; there is no pending release
+`v0.5.7` is complete, published and installed; there is no pending release
 work. Future product work should start from a clean synchronized `master`.
 
 `192.168.122.245` (disposable Ubuntu 24.04 test VM) current state: has a
@@ -696,11 +711,13 @@ reported real, reproducible bugs across every release cycle so far
 (`v0.5.0`→`v0.5.1`, a bug found while verifying `v0.5.1` itself→`v0.5.2`, a
 further round of Konsole-specific reports→`v0.5.3`, a header/scroll/ordering
 round→`v0.5.4`, a real MCP schema bug caught by actually trying the
-README's own MCP walkthrough→`v0.5.5`, and a second, missed instance of a
-bug I'd already claimed fixed elsewhere→`v0.5.6`). Every single one turned
-out to be a genuine gap, never a terminal/environment quirk or user error -
-take reports like this at face value and look for a real cause first.
-Recurring patterns worth checking early:
+README's own MCP walkthrough→`v0.5.5`, a second, missed instance of a bug
+I'd already claimed fixed elsewhere→`v0.5.6`, and a screenshot proving the
+*actual* ask - move the brand line to the bottom, not just deduplicate it
+at the top - still hadn't been done anywhere→`v0.5.7`). Every single one
+turned out to be a genuine gap, never a terminal/environment quirk or user
+error - take reports like this at face value and look for a real cause
+first. Recurring patterns worth checking early:
 
 - **"Hotkey doesn't respond" / visual misalignment / "mouse doesn't work
   here":** does a *raw*/independent key handler (`updateServerList`,
@@ -724,6 +741,16 @@ Recurring patterns worth checking early:
   just unreported because those screens weren't the one originally flagged.
   A fix scoped to "the screen the user mentioned" is not the same claim as
   "the bug is fixed" - say which one you actually verified.
+- **When a fix is described in words ("move X down"), don't assume the
+  first plausible interpretation is the intended one - ask what "down"
+  concretely means, or wait for a screenshot, before declaring it done.**
+  `v0.5.4` read "move the version signature down" as "off the crowded top
+  row, one row lower" and shipped that; the user's `v0.5.7` screenshot
+  (red arrow, top of screen to bottom) showed the actual ask was "next to
+  the bottom action bar." A verbal description of a layout change is
+  genuinely ambiguous - when in doubt, this project's convention is now to
+  treat "moved down" as "moved to sit just above the bottom key/action
+  bar" unless told otherwise.
 
 ## Publishing note
 
