@@ -4,13 +4,64 @@ Last updated: 2026-08-09
 
 Active branch: `master`
 
-Release target: `v0.5.3`
+Release target: `v0.5.4`
 
-Release status: **v0.5.3 published, installed and complete**
+Release status: **releasing now** - three more UI/UX reports against `v0.5.3`
+(cluttered server-detail header, the peer list scrolling the whole view
+instead of just the selection, client-setup option order) are fixed, tested
+and merged into `master`; this checkpoint is being written as part of
+tagging and publishing `v0.5.4`
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
+
+## Completed in the `v0.5.4` release cycle
+
+- Moved version/connection status off the server-detail header row onto the
+  tabs row (right-aligned, via a new `detailTrailing`/`tabsLine` trailing
+  parameter) - three competing facts (brand+version, server name,
+  connection state) on one line read as clutter. Verified live in tmux
+  across compact, standard and wide layouts and all three tabs.
+- Unified scroll behavior across every list in the app (server list, peer
+  list, diagnose checklist): the selection cursor moves within a stable
+  view, the view only shifts once the cursor would go off the top or
+  bottom.
+  - Root cause of the peer list specifically "moving as a whole": bubbles/
+    table@v1.0.0's row-window (`start`/`end`) and its separate internal
+    `viewport` scroll offset (`YOffset`) both move when `MoveUp`/`MoveDown`
+    run, and the second one has no public accessor - unreachable to
+    correct from outside the package. Tried driving the cursor via the
+    public `SetCursor` alone first (bypasses `MoveUp`/`MoveDown` entirely);
+    confirmed via `TestPeerTableDownStaysInSyncWithCursorWhenScrolled`
+    that this alone is *not* sufficient (`viewport.YOffset` never moves,
+    so the window stops following the cursor after a few presses).
+    Settled on wgtui owning its own scroll window
+    (`model.peerCursor`/`peerWindowStart`) and feeding `peerTable` only the
+    current window's rows, sized to fit exactly - the same windowing
+    `internal/tui/diagnose.go`'s list already used. `peerTable.Cursor()` is
+    no longer used anywhere; `peerCursor` is the one source of truth.
+  - `viewServerList` had no windowing at all before this - selecting a
+    server past the visible area used to just silently render nothing
+    there (`panelStyle`'s `Height()` clips, it doesn't scroll). Added the
+    same windowing, shared between the renderer and the mouse click
+    hit-test via `serverListRows`/`serverListVisibleRows`.
+  - A real side effect: peer row clicks now work correctly even while the
+    list is scrolled (`peerTableDataRowAt` used to be deliberately a no-op
+    in that case, since bubbles/table's scroll position wasn't readable to
+    verify against).
+- `clientSetupChoices` reordered: "Export profile + QR" first (the option
+  used more often), "Show QR code" second.
+- New regression tests: `TestServerHeaderRowIsJustTheServerName`,
+  `TestTabsRowCarriesVersionAndConnectionStatus`,
+  `TestPeerTableDownStaysInSyncWithCursorWhenScrolled`,
+  `TestServerListStaysInSyncWithCursorWhenScrolled`,
+  `TestPeerRowClickWorksEvenWhileScrolled`,
+  `TestClientSetupExportIsTheDefaultFirstChoice`.
+- `gofmt`, `go build`, `go vet`, `staticcheck v0.7.0`, `govulncheck v1.6.0`
+  (0 called vulnerabilities), `go test ./...`, `go test -race ./...`,
+  `CGO_ENABLED=0` Darwin amd64/arm64 cross-builds, and `goreleaser check`
+  all pass on the changed tree.
 
 ## Completed in the `v0.5.3` release cycle
 

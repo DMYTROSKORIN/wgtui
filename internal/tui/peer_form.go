@@ -260,9 +260,13 @@ type clientSetupChoice struct {
 	value       string
 }
 
+// clientSetupChoices lists "Export profile + QR" first - it's the one most
+// people reach for most often (a saved bundle plus the QR in one step), so
+// it should be the one the default selection lands on rather than the
+// narrower QR-only option.
 var clientSetupChoices = []clientSetupChoice{
-	{"Show QR code", "Scan it in the WireGuard app on a phone or tablet.", "qr"},
 	{"Export profile + QR", "Create a private bundle for a desktop or another device.", "export"},
+	{"Show QR code", "Scan it in the WireGuard app on a phone or tablet.", "qr"},
 	{"Show configuration text", "Advanced: display the secret .conf in this terminal.", "text"},
 	{"Finish for now", "Keep the profile encrypted in the local vault.", "done"},
 }

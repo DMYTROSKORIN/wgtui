@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -93,6 +94,83 @@ func TestDropdownPanelIndentsEveryLineNotJustTheFirst(t *testing.T) {
 	}
 	if found < 3 {
 		t.Fatalf("expected top border, at least one side border and bottom border; found %d bordered lines", found)
+	}
+}
+
+// TestServerHeaderRowIsJustTheServerName guards against three competing
+// facts (brand+version, server name, connection status) crowding one line -
+// reported as visual clutter. The header row now carries only the server
+// name; version and connection state moved to the tabs row instead (see
+// TestTabsRowCarriesVersionAndConnectionStatus).
+func TestServerHeaderRowIsJustTheServerName(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.screen, m.selected = screenServerDetail, domain.Server{ID: "office", DisplayName: "Office"}
+	m.detailSession = &session{cleanup: func() {}}
+
+	header := ansi.Strip(m.viewServerHeader())
+	if strings.Contains(header, "connected") || strings.Contains(header, "connecting") {
+		t.Fatalf("server header still carries connection status: %q", header)
+	}
+	if !strings.Contains(header, "Office") {
+		t.Fatalf("server header lost the server name: %q", header)
+	}
+}
+
+func TestTabsRowCarriesVersionAndConnectionStatus(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.screen, m.selected = screenServerDetail, domain.Server{ID: "office", DisplayName: "Office"}
+	m.detailSession = &session{cleanup: func() {}}
+
+	view := ansi.Strip(m.View())
+	lines := strings.Split(view, "\n")
+	if len(lines) <= detailTabsRow {
+		t.Fatalf("view too short to have a tabs row: %d lines", len(lines))
+	}
+	tabsRow := lines[detailTabsRow]
+	if !strings.Contains(tabsRow, "connected") {
+		t.Fatalf("tabs row does not carry connection status: %q", tabsRow)
+	}
+	if !strings.Contains(tabsRow, "Overview") {
+		t.Fatalf("tabs row lost its tab labels: %q", tabsRow)
+	}
+}
+
+// TestServerListStaysInSyncWithCursorWhenScrolled guards the third list
+// this pass unified: viewServerList had no windowing at all, so with more
+// servers than fit the panel, moving the cursor past the visible area would
+// just silently render nothing there (panelStyle's Height() clips rather
+// than scrolls). It now uses the same "cursor moves within a stable view,
+// the view only shifts once the cursor would go off top/bottom" rule as
+// diagnose and peers.
+func TestServerListStaysInSyncWithCursorWhenScrolled(t *testing.T) {
+	servers := make([]domain.Server, 20)
+	for i := range servers {
+		servers[i] = domain.Server{ID: fmt.Sprintf("s%02d", i), DisplayName: fmt.Sprintf("Server%02d", i)}
+	}
+	m := testModel(t, servers...)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	if visible := m.serverListVisibleRows(); visible >= len(servers) {
+		t.Fatalf("test setup does not actually force scrolling: visible=%d >= %d servers", visible, len(servers))
+	}
+
+	for step := 0; step < len(servers)-1; step++ {
+		m.Update(key("down"))
+		want := servers[m.cursor].DisplayName
+		view := ansi.Strip(m.View())
+		if !strings.Contains(view, want) {
+			t.Fatalf("step %d: cursor is on %q but the rendered list doesn't show it:\n%s", step, want, view)
+		}
+	}
+}
+
+// TestClientSetupExportIsTheDefaultFirstChoice: export (a saved profile
+// bundle plus its QR) is what most people reach for after adding a peer,
+// so it's the option the cursor starts on, not the narrower QR-only choice.
+func TestClientSetupExportIsTheDefaultFirstChoice(t *testing.T) {
+	if len(clientSetupChoices) == 0 || clientSetupChoices[0].value != "export" {
+		t.Fatalf("first client setup choice is %+v, want value \"export\"", clientSetupChoices[0])
 	}
 }
 

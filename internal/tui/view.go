@@ -146,22 +146,63 @@ func (m *model) viewTerminalTooSmall() string {
 	return lipgloss.NewStyle().Padding(1, 2).Render(message)
 }
 
-func (m *model) viewServerList() string {
+// serverListRows windows servers[m.cursor's neighborhood] to fit visible
+// rows - the cursor moves within a stable view, the view only shifts once
+// the cursor would go off the top or bottom, the same rule every other list
+// in the app uses (diagnose, peers). serverListRowsStart is exported for
+// mouse.go's click hit-test to stay in sync with whatever the renderer
+// actually windowed.
+func (m *model) serverListRows(visible int) (start, end int) {
+	servers := m.vault.Registry.Servers
+	visible = max(1, visible)
+	start = clamp(m.cursor-visible+1, 0, max(0, len(servers)-visible))
+	end = min(len(servers), start+visible)
+	return start, end
+}
+
+func (m *model) viewServerListRows(visible int) string {
 	var list strings.Builder
 	servers := m.vault.Registry.Servers
 	if len(servers) == 0 {
 		list.WriteString(dimStyle.Render("No servers yet.") + "\n\n")
 		list.WriteString(textStyle.Render("Press ") + selectedStyle.Render("n") + textStyle.Render(" to add one."))
-	} else {
-		for i, s := range servers {
-			line := s.DisplayName
-			if i == m.cursor {
-				list.WriteString(selectedStyle.Render("▶ "+line) + "\n")
-			} else {
-				list.WriteString("  " + textStyle.Render(line) + "\n")
-			}
+		return list.String()
+	}
+	start, end := m.serverListRows(visible)
+	for i := start; i < end; i++ {
+		s := servers[i]
+		line := s.DisplayName
+		if i == m.cursor {
+			list.WriteString(selectedStyle.Render("▶ "+line) + "\n")
+		} else {
+			list.WriteString("  " + textStyle.Render(line) + "\n")
 		}
 	}
+	return list.String()
+}
+
+// serverListVisibleRows is how many server rows fit in the current layout -
+// shared between the renderer and the mouse click hit-test so a click
+// always lands on the row it visually appears over, even when the list is
+// scrolled.
+func (m *model) serverListVisibleRows() int {
+	servers := m.vault.Registry.Servers
+	if layoutModeFor(m.width, m.height) == layoutCompact {
+		// "Servers\n\n" is 2 lines of overhead before rows start; the
+		// details block shown below them (only once a server exists) is a
+		// fixed 5 lines.
+		visible := m.fullPanelHeight() - 2
+		if len(servers) > 0 {
+			visible -= 5
+		}
+		return max(1, visible)
+	}
+	return max(1, m.dashboardPanelHeight()-2)
+}
+
+func (m *model) viewServerList() string {
+	servers := m.vault.Registry.Servers
+	visible := m.serverListVisibleRows()
 
 	if layoutModeFor(m.width, m.height) == layoutCompact {
 		var details string
@@ -171,7 +212,7 @@ func (m *model) viewServerList() string {
 				"\n" + dimStyle.Render("SSH target") + "  " + textStyle.Render(s.SSHHostOrAlias) +
 				"\n\n" + dimStyle.Render("Press Enter to open this server.")
 		}
-		content := titleStyle.Render("Servers") + "\n\n" + list.String() + details
+		content := titleStyle.Render("Servers") + "\n\n" + m.viewServerListRows(visible) + details
 		return appHeader("Server manager") + "\n" + fullPanel(m, content) + "\n" +
 			m.commanderActionBar()
 	}
@@ -179,7 +220,7 @@ func (m *model) viewServerList() string {
 	leftWidth := serverListLeftWidth(m.width)
 	rightWidth := max(30, m.width-leftWidth-5)
 	panelHeight := m.dashboardPanelHeight()
-	left := panelStyle.Width(leftWidth).Height(panelHeight).Render(titleStyle.Render("Servers") + "\n\n" + list.String())
+	left := panelStyle.Width(leftWidth).Height(panelHeight).Render(titleStyle.Render("Servers") + "\n\n" + m.viewServerListRows(visible))
 	var details string
 	if len(servers) == 0 {
 		details = titleStyle.Render("Welcome") + "\n\n" +
@@ -212,7 +253,7 @@ func (m *model) viewServerDetail() string {
 		switch m.tab {
 		case tabPeers:
 			peersWidth, inspectorWidth := peerSplitPanelWidths(m.width)
-			peers := panelStyle.Width(peersWidth).Height(panelHeight).Render(tabsLine(m.tab) + "\n" + m.viewPeerSummary() + "\n" + m.viewPeerList())
+			peers := panelStyle.Width(peersWidth).Height(panelHeight).Render(tabsLine(m.tab, m.detailTrailing(), peersWidth) + "\n" + m.viewPeerSummary() + "\n" + m.viewPeerList())
 			inspector := panelStyle.Width(inspectorWidth).Height(panelHeight).Render(m.viewSelectedPeerInspector())
 			body = lipgloss.JoinHorizontal(lipgloss.Top, peers, " ", inspector)
 		case tabDiagnose:
@@ -223,8 +264,9 @@ func (m *model) viewServerDetail() string {
 		return header + "\n" + body + "\n" + m.commanderActionBar()
 	}
 
+	panelWidth := max(40, m.width-4)
 	var content strings.Builder
-	content.WriteString(tabsLine(m.tab) + "\n\n")
+	content.WriteString(tabsLine(m.tab, m.detailTrailing(), panelWidth) + "\n\n")
 	switch m.tab {
 	case tabPeers:
 		content.WriteString(m.viewPeersTab())
@@ -234,19 +276,34 @@ func (m *model) viewServerDetail() string {
 		content.WriteString(m.viewOverviewTab())
 	}
 
-	main := panelStyle.Width(max(40, m.width-4)).Height(panelHeight).Render(content.String())
+	main := panelStyle.Width(panelWidth).Height(panelHeight).Render(content.String())
 	return header + "\n" + main + "\n" + m.commanderActionBar()
 }
 
+// viewServerHeader is just the server name - version and connection status
+// used to share this row too, but three competing facts on one line reads
+// as clutter. Both now live on the tabs row instead (see tabsLine), right
+// aligned, staying visible across every tab instead of only Overview.
 func (m *model) viewServerHeader() string {
-	connection := badge(warningStyle, "○", "connecting")
+	nameWidth := max(12, m.width-lipgloss.Width(appBrand())-2)
+	return appHeader(truncateCell(m.selected.DisplayName, nameWidth))
+}
+
+func (m *model) connectionBadge() string {
 	if m.detailErr != "" {
-		connection = badge(dangerStyle, "●", "error")
-	} else if m.detailSession != nil && !m.detailSession.closed {
-		connection = badge(successStyle, "●", "connected")
+		return badge(dangerStyle, "●", "error")
 	}
-	nameWidth := max(12, m.width-lipgloss.Width(appBrand())-lipgloss.Width(connection)-4)
-	return appHeader(truncateCell(m.selected.DisplayName, nameWidth)) + "  " + connection
+	if m.detailSession != nil && !m.detailSession.closed {
+		return badge(successStyle, "●", "connected")
+	}
+	return badge(warningStyle, "○", "connecting")
+}
+
+// detailTrailing is what tabsLine right-aligns on the tabs row: the app
+// version and the live connection state, demoted here from the header row
+// they used to crowd.
+func (m *model) detailTrailing() string {
+	return dimStyle.Render("v"+strings.TrimPrefix(Version, "v")) + "  " + m.connectionBadge()
 }
 
 // detailTabs lists the server-detail tabs in display order. Shared by
@@ -263,7 +320,13 @@ var detailTabs = []struct {
 
 const detailTabGap = "   "
 
-func tabsLine(active detailTab) string {
+// tabsLine renders the tab labels on the left and right-aligns trailing
+// (typically the version/connection badge from detailTrailing) against the
+// panel's own inner width - panelWidth being the same outer .Width(n) value
+// the caller passes to panelStyle, since tabsLine accounts for the border
+// and padding itself. ANSI-safe truncated so a long server name or narrow
+// terminal can never push this past the panel's right border.
+func tabsLine(active detailTab, trailing string, panelWidth int) string {
 	var parts []string
 	for _, t := range detailTabs {
 		if t.tab == active {
@@ -272,7 +335,16 @@ func tabsLine(active detailTab) string {
 			parts = append(parts, tabInactiveStyle.Render(t.label))
 		}
 	}
-	return strings.Join(parts, detailTabGap)
+	line := strings.Join(parts, detailTabGap)
+	innerWidth := max(0, panelWidth-4)
+	if trailing != "" {
+		pad := innerWidth - lipgloss.Width(line) - lipgloss.Width(trailing)
+		if pad < 1 {
+			pad = 1
+		}
+		line += strings.Repeat(" ", pad) + trailing
+	}
+	return ansi.Truncate(line, innerWidth, "")
 }
 
 // detailTabsRow is the fixed absolute row the tabs line renders on for
@@ -347,17 +419,18 @@ func (m *model) peerTableHeaderRow() int {
 
 // peerTableDataRowAt returns the peers index the table's own header-relative
 // visible row y (0 = the row directly under the header) is showing, or
-// ok=false. Only safe when every peer fits in the table's own height at
-// once - bubbles/table@v1.0.0 exposes no public way to read its internal
-// scroll offset from outside the package, so if it might be scrolled
-// (len(m.peers) > table height) a click cannot be reliably mapped back to a
-// data row and is intentionally left a no-op rather than risk selecting the
-// wrong peer.
+// ok=false. Exact even while scrolled: wgtui windows the peer list itself
+// (m.peerWindowStart, rebuildPeerTable), rather than asking bubbles/table's
+// own unexported scroll state for the answer.
 func (m *model) peerTableDataRowAt(y int) (int, bool) {
-	if y < 0 || len(m.peers) > m.peerTable.Height() || y >= len(m.peers) {
+	if y < 0 {
 		return 0, false
 	}
-	return y, true
+	index := m.peerWindowStart + y
+	if index >= len(m.peers) {
+		return 0, false
+	}
+	return index, true
 }
 
 func appHeader(section string) string {
@@ -514,7 +587,7 @@ func (m *model) viewOverviewTab() string {
 
 func (m *model) viewWideOverview(panelHeight int) string {
 	mainWidth, inspectorWidth := peerSplitPanelWidths(m.width)
-	main := panelStyle.Width(mainWidth).Height(panelHeight).Render(tabsLine(m.tab) + "\n\n" + m.viewOverviewTab())
+	main := panelStyle.Width(mainWidth).Height(panelHeight).Render(tabsLine(m.tab, m.detailTrailing(), mainWidth) + "\n\n" + m.viewOverviewTab())
 	actions := panelStyle.Width(inspectorWidth).Height(panelHeight).Render(m.viewOverviewActions())
 	return lipgloss.JoinHorizontal(lipgloss.Top, main, " ", actions)
 }

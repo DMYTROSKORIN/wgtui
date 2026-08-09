@@ -106,13 +106,29 @@ func (m *model) rebuildPeerTable() {
 	if layoutModeFor(m.width, m.height) == layoutWide {
 		tableHeight = max(5, m.height-12)
 	}
+
+	// Window rows[m.peerWindowStart:] ourselves - the same "cursor moves
+	// within a stable view, the view only shifts once the cursor would go
+	// off top/bottom" rule internal/tui/diagnose.go's list already uses -
+	// instead of handing bubbles/table the full row set and letting its
+	// own (unexported, unfixable from here) scroll state decide, which
+	// visibly moved the whole list instead of the selection.
+	visible := max(1, tableHeight-1) // content rows only; header takes 1
+	m.peerCursor = clamp(m.peerCursor, 0, max(0, len(m.peers)-1))
+	m.peerWindowStart = clamp(m.peerCursor-visible+1, 0, max(0, len(rows)-visible))
+	end := min(len(rows), m.peerWindowStart+visible)
+	window := rows[m.peerWindowStart:end]
+
 	m.peerTable = table.New(
 		table.WithColumns(cols),
-		table.WithRows(rows),
+		table.WithRows(window),
 		table.WithFocused(true),
-		table.WithHeight(tableHeight),
+		table.WithHeight(len(window)+1),
 		table.WithStyles(styles),
 	)
+	if len(window) > 0 {
+		m.peerTable.SetCursor(m.peerCursor - m.peerWindowStart)
+	}
 }
 
 // peerStateTableLabel deliberately returns plain text. Pre-rendered ANSI
@@ -290,7 +306,7 @@ func formatBytesCompact(n int64) string {
 }
 
 func (m *model) viewSelectedPeerCard() string {
-	row := m.peerTable.Cursor()
+	row := m.peerCursor
 	if row < 0 || row >= len(m.peers) {
 		return ""
 	}
@@ -315,7 +331,7 @@ func (m *model) viewSelectedPeerCard() string {
 }
 
 func (m *model) viewSelectedPeerInspector() string {
-	row := m.peerTable.Cursor()
+	row := m.peerCursor
 	if !m.peersLoaded {
 		return accentHeadingStyle.Render("Selected peer") + "\n\n" + dimStyle.Render("Waiting for peer data…")
 	}
@@ -457,7 +473,7 @@ type peerActionOption struct {
 }
 
 func (m *model) openActionMenu() (tea.Model, tea.Cmd) {
-	row := m.peerTable.Cursor()
+	row := m.peerCursor
 	if row < 0 || row >= len(m.peers) {
 		return m, nil
 	}

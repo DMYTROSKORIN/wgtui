@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -78,8 +79,37 @@ func TestPeerTableRowIsMouseClickable(t *testing.T) {
 		t.Fatal("peerTableHeaderRow() = -1 with two loaded peers, want a real row")
 	}
 	m.Update(leftClick(detailTabsColumn+1, header+2)) // second data row
-	if got := m.peerTable.Cursor(); got != 1 {
-		t.Fatalf("clicking the second peer row left cursor=%d, want 1", got)
+	if m.peerCursor != 1 {
+		t.Fatalf("clicking the second peer row left peerCursor=%d, want 1", m.peerCursor)
+	}
+}
+
+// TestPeerRowClickWorksEvenWhileScrolled is the direct improvement the peer
+// list windowing rewrite unlocked: bubbles/table exposes no way to read its
+// internal scroll offset from outside the package, so a click used to be
+// deliberately left a no-op whenever there were more peers than fit on
+// screen at once, to avoid ever selecting the wrong one. Now that wgtui
+// tracks its own window (peerWindowStart), a click is exact regardless.
+func TestPeerRowClickWorksEvenWhileScrolled(t *testing.T) {
+	server := domain.Server{ID: "office", DisplayName: "Office"}
+	m := testModel(t, server)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	m.screen, m.tab, m.selected = screenServerDetail, tabPeers, server
+	m.peersLoaded = true
+	for i := 0; i < 12; i++ {
+		m.peers = append(m.peers, peerview.Peer{Name: fmt.Sprintf("Peer%02d", i), PublicKey: fmt.Sprintf("pk%02d", i), Managed: true, State: "online"})
+	}
+	m.peerCursor = 8 // scrolls the window well past the top
+	m.rebuildPeerTable()
+	if m.peerWindowStart == 0 {
+		t.Fatal("test setup does not actually force scrolling")
+	}
+
+	header := m.peerTableHeaderRow()
+	wantIndex := m.peerWindowStart                    // the peer actually visible in that row, before the click changes anything
+	m.Update(leftClick(detailTabsColumn+1, header+1)) // first visible data row
+	if m.peerCursor != wantIndex {
+		t.Fatalf("clicking the first visible row left peerCursor=%d, want %d (the peer that was actually there)", m.peerCursor, wantIndex)
 	}
 }
 

@@ -3,6 +3,30 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.5.4] - 2026-08-09
+
+### Changed
+
+- Version and connection status moved off the server-detail header row,
+  which had three competing facts (brand+version, server name, connection
+  state) crowding one line. The header is now just the server name; version
+  and connection status live on the tabs row instead, right-aligned, staying
+  visible on every tab instead of only Overview.
+- Every list in the app now scrolls the same way: the selection cursor
+  moves within a stable view, and the view only shifts once the cursor
+  would go off the top or bottom. The peer list previously scrolled the
+  whole view on every keypress instead - `bubbles/table`'s row window and
+  its separate internal viewport scroll offset were both moving out of
+  step, and the second one isn't reachable from outside the package to fix
+  directly. wgtui now windows the peer list itself, the same way the
+  server list and diagnose checklist already did (the server list also had
+  no windowing at all before this - selecting a server past the visible
+  area used to just render nothing there). As a side effect, clicking a
+  peer row now works correctly even while the list is scrolled, which
+  previously had to be a deliberate no-op for safety.
+- After adding a peer, "Export profile + QR" is now the first, default
+  option instead of "Show QR code" - it's the one used more often.
+
 ## [0.5.3] - 2026-08-09
 
 ### Fixed

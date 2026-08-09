@@ -142,7 +142,19 @@ type model struct {
 	detailRequestID uint64
 
 	// peers tab
+	//
+	// wgtui owns the peer list's scroll window itself (peerCursor,
+	// peerWindowStart) rather than delegating to bubbles/table's own
+	// scrolling: that component pairs its row-window with a *second*,
+	// separately-updated viewport scroll offset, and driving both in step
+	// from outside the package isn't possible - its scroll state is
+	// unexported. rebuildPeerTable feeds peerTable only the current
+	// window's rows, sized to fit exactly, so peerTable never scrolls on
+	// its own; peerTable.Cursor() is not used anywhere, peerCursor is the
+	// one source of truth for which peer is selected.
 	peerTable       table.Model
+	peerCursor      int
+	peerWindowStart int
 	peers           []peerview.Peer
 	peersLoaded     bool
 	peersRefreshing bool
@@ -605,6 +617,27 @@ func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.tab == tabPeers {
+		// Up/Down/j/k move m.peerCursor and re-window ourselves - never
+		// through the table's own Update()/MoveUp/MoveDown, which pair the
+		// row window with a second, separately-updated viewport scroll
+		// offset this package cannot follow from outside (see peerTable's
+		// field doc comment). That combination is what made the peer list
+		// visibly scroll as a whole instead of just moving the selection
+		// within a stable view, unlike every other list in the app.
+		switch msg.String() {
+		case "up", "k":
+			if m.peerCursor > 0 {
+				m.peerCursor--
+				m.rebuildPeerTable()
+			}
+			return m, nil
+		case "down", "j":
+			if m.peerCursor < len(m.peers)-1 {
+				m.peerCursor++
+				m.rebuildPeerTable()
+			}
+			return m, nil
+		}
 		var cmd tea.Cmd
 		m.peerTable, cmd = m.peerTable.Update(msg)
 		return m, cmd

@@ -12,7 +12,7 @@ import (
 func (m *model) viewWideDiagnose(panelHeight int) string {
 	listWidth, inspectorWidth := peerSplitPanelWidths(m.width)
 	if !m.checksLoaded || m.checksErr != "" || len(m.checks) == 0 {
-		main := panelStyle.Width(listWidth).Height(panelHeight).Render(tabsLine(m.tab) + "\n\n" + m.viewDiagnoseTab())
+		main := panelStyle.Width(listWidth).Height(panelHeight).Render(tabsLine(m.tab, m.detailTrailing(), listWidth) + "\n\n" + m.viewDiagnoseTab())
 		info := panelStyle.Width(inspectorWidth).Height(panelHeight).Render(accentHeadingStyle.Render("Check details") + "\n\n" + dimStyle.Render("Diagnostics context appears here."))
 		return lipgloss.JoinHorizontal(lipgloss.Top, main, " ", info)
 	}
@@ -22,7 +22,7 @@ func (m *model) viewWideDiagnose(panelHeight int) string {
 	start := clamp(cursor-visible+1, 0, max(0, len(m.checks)-visible))
 	end := min(len(m.checks), start+visible)
 	var list strings.Builder
-	list.WriteString(tabsLine(m.tab) + "\n\n")
+	list.WriteString(tabsLine(m.tab, m.detailTrailing(), listWidth) + "\n\n")
 	for i := start; i < end; i++ {
 		c := m.checks[i]
 		if i == cursor {

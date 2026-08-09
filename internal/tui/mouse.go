@@ -45,20 +45,20 @@ func (m *model) updateCommanderMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			inRowList = event.X < serverListLeftWidth(m.width)
 		}
 		servers := m.vault.Registry.Servers
-		if row := event.Y - serverListRowsRow; inRowList && row >= 0 && row < len(servers) {
+		start, end := m.serverListRows(m.serverListVisibleRows())
+		if row := start + (event.Y - serverListRowsRow); inRowList && row >= start && row < end && row < len(servers) {
 			m.cursor = row
 			return m, nil
 		}
 	}
 
-	// Clicking a peer row selects it in the table, mirroring Up/Down there
-	// too. See peerTableDataRowAt's doc comment for why this only works
-	// when every peer is visible at once (no way to read bubbles/table's
-	// internal scroll offset from outside its package).
+	// Clicking a peer row selects it, mirroring Up/Down there too - exact
+	// even while scrolled, since wgtui windows the peer list itself.
 	if !m.menuOpen && m.screen == screenServerDetail && m.tab == tabPeers {
 		if header := m.peerTableHeaderRow(); header >= 0 {
 			if row, ok := m.peerTableDataRowAt(event.Y - header - 1); ok {
-				m.peerTable.SetCursor(row)
+				m.peerCursor = row
+				m.rebuildPeerTable()
 				return m, nil
 			}
 		}

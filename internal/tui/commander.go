@@ -158,7 +158,7 @@ func (m *model) commanderMenuItems(category int) []commanderMenuItem {
 	hasPeer := onDetail && m.tab == tabPeers && m.peersLoaded && m.peersErr == "" && len(m.peers) > 0
 	managedPeer := false
 	if hasPeer {
-		row := m.peerTable.Cursor()
+		row := m.peerCursor
 		managedPeer = row >= 0 && row < len(m.peers) && m.peers[row].Managed
 	}
 
