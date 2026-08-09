@@ -32,6 +32,38 @@ func (m *model) updateCommanderMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Clicking a server row selects it - the same thing Up/Down already do,
+	// not "open"; O/Enter still open it explicitly. viewServerList uses the
+	// two-panel layout (a details panel directly to the right of the row
+	// list, at the same Y range) for anything other than the compact
+	// single-panel layout - not just layoutWide specifically - so a click
+	// must stay within the row list's own width there too, or clicking
+	// server details text could be misread as picking a different row.
+	if !m.menuOpen && m.screen == screenServerList {
+		inRowList := true
+		if layoutModeFor(m.width, m.height) != layoutCompact {
+			inRowList = event.X < serverListLeftWidth(m.width)
+		}
+		servers := m.vault.Registry.Servers
+		if row := event.Y - serverListRowsRow; inRowList && row >= 0 && row < len(servers) {
+			m.cursor = row
+			return m, nil
+		}
+	}
+
+	// Clicking a peer row selects it in the table, mirroring Up/Down there
+	// too. See peerTableDataRowAt's doc comment for why this only works
+	// when every peer is visible at once (no way to read bubbles/table's
+	// internal scroll offset from outside its package).
+	if !m.menuOpen && m.screen == screenServerDetail && m.tab == tabPeers {
+		if header := m.peerTableHeaderRow(); header >= 0 {
+			if row, ok := m.peerTableDataRowAt(event.Y - header - 1); ok {
+				m.peerTable.SetCursor(row)
+				return m, nil
+			}
+		}
+	}
+
 	if m.menuOpen {
 		items := m.commanderMenuItems(m.menuCategory)
 		item := event.Y - 2

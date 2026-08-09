@@ -3,6 +3,42 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.5.3] - 2026-08-09
+
+### Fixed
+
+- The vault password action's raw keyboard handler still had its own
+  independent `P` binding untouched by the `v0.5.1` rename to `W`, so
+  plain `P` kept opening the password form even though the UI said `W`.
+  Now `W` only.
+- Fixed a real rendering bug: the top-menu dropdown's horizontal offset was
+  applied by prepending spaces to the whole multi-line panel string, which
+  only indents the first line (the top border). Every other line - every
+  item row, the bottom border - stayed at column 0, both visibly "sliding"
+  apart from the border for every category except the first, and breaking
+  the mouse click hit-test for those same rows.
+- The server list and the peer table now respond to mouse clicks on their
+  rows, the same as Up/Down already do. (The peer table only where every
+  peer fits in the visible table height at once - `bubbles/table` exposes
+  no way to read its internal scroll offset from outside the package, so a
+  click while scrolled is intentionally a no-op rather than risking
+  selecting the wrong peer.)
+- A wrong sudo password was silently losing its own explanation: sudo's
+  "Sorry, try again." retry text landed *before* the point later output
+  gets trimmed from, so on final failure - especially when the remote side
+  closed the connection right after giving up rather than printing a
+  distinct summary line - nothing useful was left to detect, surfacing as
+  an unexplained "exited 255" instead of a clear rejected-password message.
+  Failed interactive SSH/sudo commands now return their entire captured
+  output instead of the trimmed tail, and `RunSudo`/`RunSudoScript` (used
+  by install, configure and peer operations, not just the initial connect)
+  now detect and report a rejected sudo password the same way the initial
+  connect already did in `v0.5.1`.
+- Documented connecting Claude Desktop/Claude Code to `wgtui mcp` concretely
+  (an actual config JSON example) and added an explicit, honest note on the
+  security trade-off of putting the vault master password in a persistent
+  client config file versus wgtui's normal memory-only handling.
+
 ## [0.5.2] - 2026-08-09
 
 ### Fixed

@@ -272,7 +272,7 @@ func (m *model) dispatchCommanderAction(action commanderAction) tea.Cmd {
 		m.peerReconnected = false
 		return m.loadPeersFromSessionCmd()
 	case actionChangePassword:
-		_, cmd := m.updateServerList(commanderKey("p"))
+		_, cmd := m.updateServerList(commanderKey("w"))
 		return cmd
 	case actionHelp:
 		if m.screen == screenHelp {
@@ -506,7 +506,21 @@ func (m *model) viewCommanderMenu() string {
 	}
 	panel := panelStyle.Width(menuWidth).Render(strings.TrimSuffix(list.String(), "\n") + detail)
 	offset := commanderCategoryStart(m.menuCategory)
-	panel = strings.Repeat(" ", offset) + panel
+	if offset > 0 {
+		// panel is a multi-line bordered box; a plain string concat would
+		// only indent its first line, leaving every other line (including
+		// the bottom border and every item row) at column 0 - visually
+		// "sliding" apart from the top border for every category except
+		// the first (offset 0, where the bug is invisible), and breaking
+		// the mouse hit-test in mouse.go, which assumes every row actually
+		// starts at this same offset.
+		pad := strings.Repeat(" ", offset)
+		lines := strings.Split(panel, "\n")
+		for i, line := range lines {
+			lines[i] = pad + line
+		}
+		panel = strings.Join(lines, "\n")
+	}
 	panelLines := strings.Count(panel, "\n") + 1
 	blank := max(0, m.height-2-panelLines)
 	return panel + strings.Repeat("\n", blank+1) + m.commanderActionBar()

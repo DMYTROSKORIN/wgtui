@@ -176,7 +176,7 @@ func (m *model) viewServerList() string {
 			m.commanderActionBar()
 	}
 
-	leftWidth := clamp(m.width/3, 24, 36)
+	leftWidth := serverListLeftWidth(m.width)
 	rightWidth := max(30, m.width-leftWidth-5)
 	panelHeight := m.dashboardPanelHeight()
 	left := panelStyle.Width(leftWidth).Height(panelHeight).Render(titleStyle.Render("Servers") + "\n\n" + list.String())
@@ -302,6 +302,62 @@ func tabClickTarget(x int) (tab detailTab, ok bool) {
 		}
 	}
 	return 0, false
+}
+
+// serverListRowsRow is the fixed absolute row server rows start at in
+// viewServerList, for both the compact and wide layout (both build the
+// exact same "Servers\n\n" + one line per server content, just inside a
+// differently-sized left panel starting at the same X=0): row 0 top menu
+// bar, row 1 appHeader, row 2 panel top border, row 3 "Servers" title,
+// row 4 blank line, row 5 the first server.
+const serverListRowsRow = 5
+
+// serverListLeftWidth is the wide-layout server list's left (server rows)
+// panel width - shared between the renderer and the mouse hit-test so a
+// click landing in the details panel to its right can never be mistaken
+// for a row click.
+func serverListLeftWidth(width int) int {
+	return clamp(width/3, 24, 36)
+}
+
+// peerTableHeaderRow returns the absolute row bubbles/table's own header
+// line renders on, or -1 if the peer table isn't actually being shown
+// (still loading, errored, or genuinely empty - viewPeerList shows a plain
+// message instead in all of those cases, nothing to click). Derived from
+// the same line counts viewServerDetail/viewPeersTab/viewPeerList build,
+// not duplicated rendering logic - just how many lines each conditional
+// piece contributes.
+func (m *model) peerTableHeaderRow() int {
+	if !m.peersLoaded || m.peersErr != "" || len(m.peers) == 0 {
+		return -1
+	}
+	// tabsLine -> summary is one "\n" in wide mode's single content
+	// string, but two ("\n\n") in compact/standard's tabsLine-then-blank
+	// pattern before viewPeersTab's own content starts.
+	summaryRow := detailTabsRow + 1
+	if layoutModeFor(m.width, m.height) != layoutWide {
+		summaryRow++
+	}
+	row := summaryRow + 1
+	if m.peersRefreshing {
+		row += 2 // "↻ Refreshing peer state…" + its trailing blank line
+	}
+	return row
+}
+
+// peerTableDataRowAt returns the peers index the table's own header-relative
+// visible row y (0 = the row directly under the header) is showing, or
+// ok=false. Only safe when every peer fits in the table's own height at
+// once - bubbles/table@v1.0.0 exposes no public way to read its internal
+// scroll offset from outside the package, so if it might be scrolled
+// (len(m.peers) > table height) a click cannot be reliably mapped back to a
+// data row and is intentionally left a no-op rather than risk selecting the
+// wrong peer.
+func (m *model) peerTableDataRowAt(y int) (int, bool) {
+	if y < 0 || len(m.peers) > m.peerTable.Height() || y >= len(m.peers) {
+		return 0, false
+	}
+	return y, true
 }
 
 func appHeader(section string) string {

@@ -1,12 +1,15 @@
 package tui
 
 import (
+	"errors"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/diagnostics"
 	"github.com/DMYTROSKORIN/wgtui/internal/discovery"
 	"github.com/DMYTROSKORIN/wgtui/internal/peerview"
+	"github.com/DMYTROSKORIN/wgtui/internal/sshtransport"
 )
 
 // errMsg is a catch-all async failure with nowhere more specific to go -
@@ -141,6 +144,14 @@ func (m *model) handleActionDone(msg actionDoneMsg) (tea.Model, tea.Cmd) {
 	// reveal screen) sets m.screen itself, after this line runs.
 	m.screen = m.onCancelled
 	if msg.err != nil {
+		if errors.Is(msg.err, sshtransport.ErrSudoPasswordRejected) {
+			// A privileged step inside this action (install, configure,
+			// peer add/enable/disable/revoke/rotate, ...) hit a sudo
+			// password the server has already refused - never keep
+			// retrying it silently, and say what actually happened instead
+			// of leaving the user staring at a bare exit code.
+			m.creds.clearSudoPassword()
+		}
 		m.setError(msg.err)
 	}
 	var cmd tea.Cmd

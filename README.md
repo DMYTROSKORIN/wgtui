@@ -140,6 +140,42 @@ refuses. Full design and the credential/host-key trade-offs this implies:
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#mcp-server-front-end-internalmcpserver) and
 [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) (T10).
 
+### Connecting Claude Desktop or Claude Code to it
+
+Add `wgtui` as a custom MCP server in the client's config (Claude Desktop:
+`claude_desktop_config.json`; Claude Code: `claude mcp add`, or the same JSON shape in its
+own config file):
+
+```json
+{
+  "mcpServers": {
+    "wgtui": {
+      "command": "/home/you/.local/bin/wgtui",
+      "args": ["mcp"],
+      "env": { "WGTUI_MASTER_PASSWORD": "your vault master password" }
+    }
+  }
+}
+```
+
+The client then launches `wgtui mcp` itself and talks to it over stdio - there is nothing
+else to run by hand. Once connected, just ask the assistant in plain language, e.g. "list my
+wgtui servers" or "show me office's peers" - it discovers the available tools on its own; you
+don't need to name them.
+
+**About that `WGTUI_MASTER_PASSWORD` line specifically:** this is a real trade-off, not a
+formality. Everywhere else in `wgtui` (cli, tui), the master password only ever exists
+transiently in memory for as long as it's needed. Baked into a client's config file like
+this, it instead sits in **plaintext on disk indefinitely**, protected only by normal
+filesystem permissions on that config file - readable by anything that can read it. If that's
+more exposure than you want, don't put a real secret in a long-lived config file: keep the
+master password to servers you're comfortable an MCP-driving agent (and anything that can
+read that config file) having standing access to, use a vault dedicated to that purpose
+rather than your primary one, or wrap `wgtui mcp` in your own small launcher script that
+pulls the password from your OS keyring (`secret-tool`, `pass`, etc.) at startup instead of a
+static config value - `wgtui` itself only ever reads the literal environment variable, so
+where that value ultimately comes from is entirely up to you.
+
 ## Development
 
 Every push is scanned with [Semgrep](https://semgrep.dev) (`p/golang`, `p/security-audit`,

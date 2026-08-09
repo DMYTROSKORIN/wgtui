@@ -4,13 +4,85 @@ Last updated: 2026-08-09
 
 Active branch: `master`
 
-Release target: `v0.5.2`
+Release target: `v0.5.3`
 
-Release status: **v0.5.2 published, installed and complete**
+Release status: **releasing now** - a second round of real-world bug reports
+against `v0.5.1`/`v0.5.2`, this time from Konsole/KDE specifically (raw `P`
+still worked, dropdown menus visibly misaligned for every category but the
+first, server list and peer table not mouse-clickable, wrong sudo password
+losing its own explanation), is fixed, tested and merged into `master`; this
+checkpoint is being written as part of tagging and publishing `v0.5.3`
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
+
+## Completed in the `v0.5.3` release cycle
+
+- Fixed six more real bugs reported from actual Konsole/KDE usage:
+  1. `updateServerList`'s raw key switch (`internal/tui/model.go`) still had
+     its own untouched `case "p"` from before the `v0.5.1` rename to `W` -
+     the visible accelerator changed but this independent binding, reached
+     whenever no commander accelerator claims the keypress first, did not.
+     Now `case "w"` only; `dispatchCommanderAction`'s internal synthesis
+     updated to match. Regression: `TestPlainPNoLongerOpensPasswordForm`.
+  2. Real rendering bug in `viewCommanderMenu`: the dropdown's horizontal
+     offset was applied by prepending spaces to the *whole* multi-line panel
+     string, which only indents its first line (the top border) - every
+     other line, including every item row and the bottom border, stayed at
+     column 0. Invisible for category 0 (offset 0, "only the first one
+     displays correctly" is exactly what was reported), visibly broken for
+     every other category, and this same mismatch made mouse.go's item
+     hit-test (which assumes the render used the same offset) miss every row
+     below the border. Fixed by indenting every line; confirmed both by a
+     new regression test verifying every bordered line shares one column
+     (`TestDropdownPanelIndentsEveryLineNotJustTheFirst`, which fails
+     correctly against the old code) and by live tmux inspection.
+  3. Server list and peer table rows are now mouse-clickable (select, like
+     Up/Down - O/Enter still opens). Peer table clicks are intentionally
+     scoped to "every peer fits in the table's visible height at once" -
+     `bubbles/table@v1.0.0` exposes no public way to read its internal
+     scroll offset from outside the package, so a click while scrolled
+     would risk selecting the wrong peer; left a no-op instead. A follow-up
+     bug in the first cut of the server-list click (missing an X-axis bound,
+     so clicking the details panel in two-panel layout could be misread as
+     a row click) was caught by its own regression test
+     (`TestServerListRowClickIgnoresTheDetailsPanelInWideLayout`) before
+     shipping - the bound needed to match `layoutModeFor(...) != layoutCompact`,
+     not `== layoutWide`, since `viewServerList`'s two-panel layout covers
+     both standard and wide.
+  4. Root cause of "wrong sudo password loses its own explanation, shows a
+     bare exit code / silently reports no privileges": `runInteractive`
+     (`internal/sshtransport/client.go`) always returned only the *tail*
+     of its captured output (after the last prompt it answered), but a
+     rejected sudo password's "Sorry, try again." explanation is exactly
+     the text that tail-stripping discards - and if the remote side closes
+     the connection right after giving up rather than printing one more
+     distinct summary line, nothing useful was left at all. `runInteractive`
+     now returns the *entire* captured stream on failure (still just the
+     clean tail on success). `RunSudo`/`RunSudoScript` - used by install,
+     configure and peer operations, not only the initial connect that
+     `v0.5.1` already covered - now detect and wrap a rejected password the
+     same way `SudoValidate` does. `internal/tui/flow.go`'s
+     `handleActionDone` clears the cached sudo password on any action that
+     hits this, not just the initial discovery path.
+  5. Documented connecting Claude Desktop/Claude Code to `wgtui mcp` with an
+     actual config JSON example, and an explicit, honest note that baking
+     the vault master password into a persistent client config file trades
+     away wgtui's normal memory-only handling of it - a real trade-off, not
+     just a formality.
+- Live-verified end to end against `192.168.122.245` in tmux: intentionally
+  entered a wrong sudo password and confirmed the new "sudo password was
+  rejected by the server" message appears (both inline on Overview and as
+  the status banner), that `R` (retry) re-prompts instead of silently
+  reusing the rejected value, and that entering the correct password
+  afterward recovers normally. Also confirmed live: the dropdown for a
+  non-first category renders as a single aligned box, and a raw SGR mouse
+  click correctly selects a different server-list row.
+- `gofmt`, `go build`, `go vet`, `staticcheck v0.7.0`, `govulncheck v1.6.0`
+  (0 called vulnerabilities), `go test ./...`, `go test -race ./...`,
+  `CGO_ENABLED=0` Darwin amd64/arm64 cross-builds, and `goreleaser check`
+  all pass on the changed tree.
 
 ## Completed in the `v0.5.2` release cycle
 
@@ -336,18 +408,25 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-`v0.5.2` is complete, published and installed; there is no pending release
+`v0.5.3` is complete, published and installed; there is no pending release
 work. Future product work should start from a clean synchronized `master`. Do
 not repeat the already-passed live install test against `192.168.122.245`
 unless install/discovery behavior changes; that VM currently has WireGuard
 installed with no interface configured.
 
-The user is testing the live installed binary hands-on and has reported real
-bugs found this way twice in a row (`v0.5.0`→`v0.5.1`, then a bug found while
-verifying `v0.5.1` itself→`v0.5.2`). Screenshots/reports referencing
-`Alt+letter` or top-menu behavior should be taken at face value and
-investigated for a real code gap first - both prior reports turned out to be
-genuine bugs, not terminal/environment quirks.
+The user tests the live installed binary hands-on (Konsole/KDE) and has now
+reported real, reproducible bugs across three release cycles in a row
+(`v0.5.0`→`v0.5.1`, a bug found while verifying `v0.5.1` itself→`v0.5.2`, then
+a further round of Konsole-specific reports→`v0.5.3`). Every one of them
+turned out to be a genuine code bug, not a terminal/environment quirk - take
+reports like this at face value and look for a real gap first, especially
+anything about "hotkey doesn't respond", visual misalignment, or "mouse
+doesn't work here". A recurring root-cause pattern worth checking early: does
+a *raw*/independent key handler (`updateServerList`, `updateServerDetail`,
+etc.) still bind something the commander-accelerator layer was supposed to
+have moved or renamed? And for layout/geometry bugs: does a renderer that
+builds a multi-line block apply an offset to the whole string (only affects
+the first line) instead of to every line?
 
 ## Publishing note
 

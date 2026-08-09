@@ -62,6 +62,40 @@ func TestActiveCommanderCategoryOnlyWhenMenuOpen(t *testing.T) {
 // updateCommanderMenu unmatched and do nothing at all - indistinguishable
 // from "the hotkey doesn't respond" to a user pressing Alt+P expecting the
 // Peer menu while Server's dropdown happened to already be open.
+// TestDropdownPanelIndentsEveryLineNotJustTheFirst guards a real rendering
+// bug: viewCommanderMenu indented its offset by prepending spaces to the
+// whole multi-line panel string, which only shifts the first line (the top
+// border) - every other line, including every item row and the bottom
+// border, stayed at column 0. Invisible for category 0 (offset 0), but for
+// every other category the box visibly fell apart, and mouse.go's hit-test
+// (which assumes every row starts at the same offset the render used)
+// missed every row below the top border entirely - reported as "dropdown
+// menus slide, only the first one displays correctly" and "menu items can't
+// be selected with the mouse".
+func TestDropdownPanelIndentsEveryLineNotJustTheFirst(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
+	m.Update(key("m"))
+	m.Update(key("right")) // category 1 (Peer): commanderCategoryStart > 0
+
+	view := ansi.Strip(m.viewCommanderMenu())
+	wantCol := commanderCategoryStart(m.menuCategory)
+	found := 0
+	for _, line := range strings.Split(view, "\n") {
+		col := strings.IndexAny(line, "╭│╰")
+		if col < 0 {
+			continue
+		}
+		found++
+		if col != wantCol {
+			t.Fatalf("border character at column %d, want %d (category start): %q", col, wantCol, line)
+		}
+	}
+	if found < 3 {
+		t.Fatalf("expected top border, at least one side border and bottom border; found %d bordered lines", found)
+	}
+}
+
 func TestAltCategorySwitchesWhileMenuAlreadyOpen(t *testing.T) {
 	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
@@ -79,6 +113,22 @@ func TestAltCategorySwitchesWhileMenuAlreadyOpen(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h"), Alt: true})
 	if !m.menuOpen || m.menuCategory != 4 {
 		t.Fatalf("Alt+H while the Peer menu was open did not switch to Help: open=%v category=%d", m.menuOpen, m.menuCategory)
+	}
+}
+
+// TestPlainPNoLongerOpensPasswordForm guards a real regression: the visible
+// accelerator moved from P to W, but updateServerList's raw key switch (a
+// second, independent binding reached only when no commander accelerator
+// claims the keypress) still had its own untouched "p" case, so pressing
+// plain P kept opening the password form even though the UI now says W -
+// confirmed happening in practice (Konsole/KDE).
+func TestPlainPNoLongerOpensPasswordForm(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "office", DisplayName: "Office"})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+
+	m.Update(key("p"))
+	if m.screen == screenChangePassword {
+		t.Fatal("plain P still opens the vault password form; it must be W only")
 	}
 }
 

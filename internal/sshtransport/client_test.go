@@ -1,6 +1,10 @@
 package sshtransport
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+)
 
 func TestBaseArgs_IncludesTargetAndControlPath(t *testing.T) {
 	c := NewClient(Target{HostOrAlias: "nas.paynet.one", Port: 2626, User: "skorin", IdentityFile: "/home/x/.ssh/id_ed25519"}, "/tmp/wgtui-test.sock")
@@ -60,3 +64,23 @@ func TestSudoPasswordWasRejected(t *testing.T) {
 		})
 	}
 }
+
+func TestInteractiveOutputReturnsFullBufferOnErrorNotJustTheStrippedTail(t *testing.T) {
+	full := "[sudo] password for skorin: Sorry, try again.\n[sudo] password for skorin: sudo: 2 incorrect password attempts"
+	// outputStart simulates the second "password for" match advancing past
+	// the "Sorry, try again." explanation - the exact scenario that used to
+	// silently discard it.
+	outputStart := len("[sudo] password for skorin: Sorry, try again.\n[sudo] password for skorin: ")
+
+	onError := interactiveOutput(full, outputStart, errTestSentinel)
+	if !strings.Contains(string(onError), "Sorry, try again") {
+		t.Fatalf("on error, interactiveOutput dropped the rejection explanation: %q", onError)
+	}
+
+	onSuccess := interactiveOutput(full, outputStart, nil)
+	if strings.Contains(string(onSuccess), "Sorry, try again") {
+		t.Fatalf("on success, interactiveOutput kept prompt boilerplate it should have stripped: %q", onSuccess)
+	}
+}
+
+var errTestSentinel = errors.New("test failure")

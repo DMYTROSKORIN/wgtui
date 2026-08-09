@@ -498,7 +498,7 @@ func (m *model) updateServerList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.clearStatus()
 		m.startRemoveConfirm(servers[m.cursor])
 		return m, m.removeForm.Init()
-	case "p":
+	case "w":
 		m.clearStatus()
 		m.startPasswordForm()
 		return m, m.passwordForm.Init()

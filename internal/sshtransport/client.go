@@ -187,11 +187,21 @@ func (c *Client) SudoValidate(ctx context.Context, prompts Prompts) error {
 // SudoValidate's doc comment for why it cannot rely on a cache). The
 // password is held only in prompts.SudoPassword's closure and is written
 // straight to the PTY, never to argv or the environment (SPEC.md §23.1).
+//
+// Ordinarily an *exec.ExitError here just means remoteCmd itself exited
+// non-zero (surfaced to the caller as res.ExitCode, err left nil) - but a
+// rejected sudo password can *also* end the whole ssh session non-zero
+// before remoteCmd ever ran (confirmed in practice as an otherwise
+// unexplained "exited 255"), so that specific case is wrapped as
+// ErrSudoPasswordRejected instead of the generic nil-err/exit-code shape.
 func (c *Client) RunSudo(ctx context.Context, remoteCmd string, prompts Prompts) (Result, error) {
 	args := append(c.baseArgs(), "-tt", c.target.HostOrAlias, "sudo "+remoteCmd)
 	out, err := c.runInteractive(ctx, args, prompts)
 	res := interactiveResult(out, err)
 	if exitErr, ok := err.(*exec.ExitError); ok {
+		if sudoPasswordWasRejected(out) {
+			return res, fmt.Errorf("%w", ErrSudoPasswordRejected)
+		}
 		res.ExitCode = exitErr.ExitCode()
 		return res, nil
 	}
@@ -218,6 +228,9 @@ func (c *Client) RunSudoScript(ctx context.Context, script string, prompts Promp
 	out, err := c.runInteractive(ctx, args, prompts)
 	res := interactiveResult(out, err)
 	if exitErr, ok := err.(*exec.ExitError); ok {
+		if sudoPasswordWasRejected(out) {
+			return res, fmt.Errorf("%w", ErrSudoPasswordRejected)
+		}
 		res.ExitCode = exitErr.ExitCode()
 		return res, nil
 	}
@@ -263,12 +276,31 @@ func normalizePTYCapture(out []byte) []byte {
 	return []byte(s)
 }
 
+// interactiveOutput picks what runInteractive returns as captured output:
+// on success, everything read after the last prompt it answered (prompt
+// boilerplate stripped from the front) - the command's clean stdout. On
+// failure, the *entire* captured stream instead, unstripped: a rejected
+// sudo password re-prompts ("Sorry, try again." + another "[sudo] password
+// for <user>: " line), and that second prompt match would otherwise advance
+// outputStart past the "Sorry, try again." text that explains what actually
+// went wrong, potentially leaving nothing useful behind it if the remote
+// side closes the connection right after giving up rather than printing a
+// separate final summary line - confirmed happening in practice as an
+// unexplained "exited 255" with no indication a password was even involved.
+func interactiveOutput(full string, outputStart int, err error) []byte {
+	if err != nil {
+		return []byte(full)
+	}
+	return []byte(full[outputStart:])
+}
+
 // runInteractive spawns ssh under a local PTY, scans its output for a
 // handful of known ssh/sudo prompts, and answers them via the Prompts
-// callbacks. It returns everything read after the last prompt it answered
-// (i.e. with prompt boilerplate stripped from the front) — for a plain
+// callbacks. On success it returns everything read after the last prompt it
+// answered (prompt boilerplate stripped from the front) - for a plain
 // Dial/SudoValidate call (no real command output expected) callers ignore
-// this; RunSudo returns it as the command's captured stdout.
+// this; RunSudo returns it as the command's captured stdout. On failure it
+// returns the entire captured stream instead - see interactiveOutput.
 func (c *Client) runInteractive(ctx context.Context, args []string, prompts Prompts) ([]byte, error) {
 	cmd := newSSHCmd(ctx, args...)
 	f, err := pty.Start(cmd)
@@ -297,7 +329,7 @@ func (c *Client) runInteractive(ctx context.Context, args []string, prompts Prom
 			if isTimeoutErr(rerr) {
 				select {
 				case werr := <-done:
-					return []byte(full.String()[outputStart:]), werr
+					return interactiveOutput(full.String(), outputStart, werr), werr
 				default:
 					continue
 				}
@@ -305,7 +337,7 @@ func (c *Client) runInteractive(ctx context.Context, args []string, prompts Prom
 			// EOF (or another read error) from the pty: the remote side
 			// almost certainly closed because the process exited.
 			werr := <-done
-			return []byte(full.String()[outputStart:]), werr
+			return interactiveOutput(full.String(), outputStart, werr), werr
 		}
 		lineBuf.WriteByte(b)
 		full.WriteByte(b)
