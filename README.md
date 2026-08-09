@@ -1,150 +1,149 @@
 # wgtui
 
-Terminal UI and CLI for managing one or more remote WireGuard servers over plain SSH —
-no agent, no web UI, no extra open port on the server.
+**A terminal control panel for the WireGuard servers you already run.**
 
-> **Status: stable personal release.** The TUI, CLI, MCP front end, encrypted local
-> vault, discovery, setup and peer lifecycle are implemented. See
-> [`docs/SPEC.md`](docs/SPEC.md) for requirements, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-> for internals and [`docs/TUI.md`](docs/TUI.md) for the terminal workflow.
+`wgtui` connects to your own Linux server over plain SSH, discovers whatever
+WireGuard setup is already there (or helps you build one from scratch), and
+gives you a fast, keyboard-and-mouse-driven terminal UI to manage interfaces
+and peers - without installing anything but standard `wireguard-tools` on
+the server itself.
+
+No web dashboard. No agent daemon. No new open port. No mesh network to
+join. Just your server, SSH, and vanilla WireGuard - the way it already
+works, with a good interface put in front of it.
+
+---
+
+## Why wgtui
+
+Most WireGuard tooling asks you to change how your VPN works: adopt a mesh
+network and a coordination server (Tailscale, Headscale, Netmaker), or run a
+persistent web app *on* the VPN server itself (wg-easy, wireguard-ui) that
+generates its own client keys and becomes one more service you have to keep
+patched, exposed, and backed up.
+
+`wgtui` doesn't ask for any of that. It manages the WireGuard server you
+already have, or a completely bare one, using only SSH and the standard
+`wg`/`wg-quick` tools - the same thing you'd type by hand, just done
+correctly and consistently, without the muscle memory or the sitting-in-front-
+of-`vim`-on-a-VPS part.
+
+- **The server stays boring.** Nothing runs on it but WireGuard and SSH -
+  the same footprint as a server nobody is "managing" at all. No web UI to
+  patch, no daemon to keep alive, no extra listening port.
+- **Client private keys never touch the server.** They're generated on your
+  machine and stay in an encrypted local vault; the server only ever
+  receives a public key. Tools that generate keys server-side have, at some
+  point, held every client's private key - `wgtui` structurally can't.
+- **Nothing happens without a plan you can read first.** Every mutating
+  action - install, configure, add/revoke/rotate a peer - shows the exact
+  commands or config change before it runs, and asks you to confirm it.
+  Config writes go through a locked, verified, roll-back-on-failure
+  transaction, not a blind overwrite.
+- **One tool, three front doors, one safety model.** The same validated
+  core drives a terminal UI for a human, a scripting-friendly CLI, and an
+  [MCP](https://modelcontextprotocol.io) server for AI agents - so
+  automating or asking an assistant to do it never bypasses the
+  confirmations a human would get.
+- **One static binary.** Pure Go, no Docker, no Python, no Node, no browser.
+  Cross-compiles for Linux and macOS and runs the same way on both.
+- **Manages more than one server.** Every server you add lives in one
+  encrypted local registry, switchable from the same screen.
+
+## Who it's for
+
+Anyone running their own WireGuard server - a VPS, a homelab box, a rack in
+a closet - who's currently either hand-editing `/etc/wireguard/wg0.conf`
+over SSH, or has been eyeing a heavier platform just to avoid that. If you
+already trust your own machine to `ssh` into your servers, `wgtui` is the
+missing piece between "raw config file" and "adopt an entire VPN platform."
+
+It is *not* a mesh networking product, not a hosted service, and it will
+never ask a server to run anything beyond stock WireGuard.
 
 ---
 
 ## What it does
 
-- Connects to a server over SSH (key, `ssh-agent`, or interactive password).
-- Discovers WireGuard and existing interfaces, read-only, before touching anything.
-- Shows interface/peer state, handshake, endpoint, and traffic counters.
-- Generates client keypairs **locally** and hands the server only the public key — a
-  ready `.conf` and QR code are produced on your machine, no `scp` involved.
-- Gives new client profiles an editable Google DNS default (`8.8.8.8`, `8.8.4.4`),
-  so full-tunnel clients do not silently depend on their previous network resolver.
+- Connects to a server over SSH (key, `ssh-agent`, or interactive password) -
+  discovers the current WireGuard state read-only before anything else.
+- Shows interface and peer state, handshake age, endpoint, and traffic
+  counters at a glance.
+- Walks a bare server through installing WireGuard and creating its first
+  interface, then straight into that setup - no separate, easy-to-miss step.
+- Generates client keypairs **locally**; the server only ever receives a
+  public key. A ready `.conf` and QR code are produced on your machine, no
+  `scp` required.
+- Gives new client profiles an editable DNS default, so a full-tunnel client
+  doesn't silently inherit a resolver you didn't choose.
 - Adds, pauses, resumes, rotates, and revokes peers, each as a locked,
   verified, rollback-on-failure transaction with an ephemeral recovery copy.
-- Offers a guided first-time server setup when no WireGuard interface exists yet.
-- Leaves nothing but standard WireGuard, standard config files, and SSH on the server.
+- Runs the exact same operations from a terminal UI, a scriptable CLI, or an
+  MCP server for AI agents - one validated core behind all three.
 
-## Why
+## See it
 
-Managing a plain WireGuard server usually means hand-editing
-`/etc/wireguard/wg0.conf` over SSH, or installing a whole extra panel just to add a peer.
-`wgtui` keeps the server exactly as WireGuard ships it and puts the tooling on the machine
-you already trust to administer it from.
+![wgtui: opening a server, browsing Overview/Peers/Diagnose, and the top menu](docs/assets/demo.gif)
 
-## Non-goals for v1
-
-No web UI, no cloud control plane, no reimplementation of the WireGuard protocol, no
-mesh networking, no mandatory server daemon. Full list: [`docs/SPEC.md` §3.2](docs/SPEC.md).
-
-<details>
-<summary>Supported platforms (MVP)</summary>
-
-**Control client:** Linux amd64/arm64, macOS amd64/arm64.
-
-**Managed server:** Ubuntu, Debian, Fedora (systemd). macOS is a client-only platform in
-this project — it is never a managed server.
-
-</details>
-
-<details>
-<summary>Security posture</summary>
-
-- Server private key never leaves the server; client private keys never touch the server.
-- Strict SSH host-key verification by default, always.
-- Every mutating operation uses a locked temporary recovery copy, verifies the
-  result, and rolls back on failure. The copy is retained only if recovery itself fails.
-- No secret is ever passed as a process argument, logged, or included in `--json` output.
-- App-owned local state lives in `~/.wgtui-config/vault.json`, encrypted under the
-  master password. An explicit TUI export creates a `0700` bundle in the invoking
-  user's home with a profile and QR PNG, both mode `0600`.
-- `wgtui` refuses to run as root so local keys cannot silently move into root's home.
-
-Full analysis: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
-
-</details>
-
----
-
-## Building
+## Using the terminal UI
 
 ```bash
-go build ./...
+wgtui
 ```
 
-Running `wgtui` without arguments opens the full-screen dashboard. The master
-password is requested by a clearly labelled form inside the application. SSH,
-host-key and sudo questions also use in-app modals that name the remote server.
-Inside the app, `M` opens the complete command menu, `?` shows keyboard help,
-`R` refreshes, `Esc` goes back, and `Q`/`Ctrl+C` exits safely. Highlighted
-letters and all menu/action segments are clickable with the mouse. The minimum interactive
-terminal size is `64×18`; `90×24` or
-larger is recommended. The interface switches between compact, standard and
-wide layouts automatically and preserves the current screen while the terminal
-is temporarily too small.
+opens the full-screen dashboard. The very first run asks you to set a local
+master password that encrypts the server/peer registry on disk - it's never
+sent anywhere. SSH, host-key, and sudo prompts also happen as in-app dialogs
+that name the exact server they're for; nothing password-related ever drops
+you back to a plain terminal prompt.
 
-<details>
-<summary>Installing a release</summary>
+Two accelerator systems, never sharing a key: **`Alt+letter`** always opens
+a top-menu category (Server, Peer, View, Tools, Help) regardless of screen;
+a plain **letter** runs whatever this specific screen offers, shown as a
+highlighted letter inside its own label on the bottom bar. `M` opens the
+menu without a modifier, `?` shows full keyboard help, `Q`/`Ctrl+C` exits
+safely. Every menu item and bottom-bar action is also just a mouse click.
 
-This is a private repo for personal use, not distributed to third parties - releases are
-`.deb`/`.rpm`/`.tar.gz` on GitHub Releases only (`.github/workflows/release.yml`, triggered
-by a `vX.Y.Z` git tag), no Homebrew tap and no GPG signature (see `.goreleaser.yaml` for the
-reasoning).
+The minimum usable size is `64×18`; `90×24` or larger is recommended. Layout
+adapts automatically between compact, standard, and wide as the terminal
+resizes.
+
+## Using the CLI
+
+Every TUI action has a scriptable equivalent:
 
 ```bash
-scripts/install.sh          # latest release, or: scripts/install.sh vX.Y.Z
+wgtui server add office --ssh-host 203.0.113.10 --ssh-user root
+wgtui server install-wireguard office
+wgtui server configure office --vpn-cidr 10.10.0.0/24
+wgtui peer add office --name laptop --full-tunnel --qr
+wgtui peer list office --json
+wgtui peer revoke office laptop
+wgtui diagnose office
 ```
 
-The recommended way to install: no root, ever. Downloads via `gh` (needed either way - the
-repo is private, so a plain `curl` of the asset URL can't authenticate), verifies
-`checksums.txt`, and installs the binary, man page, and shell completions entirely under
-`~/.local/` - the same user-owned-prefix approach as rustup/pipx/cargo, not a system package
-manager. Re-run it after every release to update.
+Run `wgtui help` for the full command surface. Every command that needs
+network access prompts interactively for SSH/sudo credentials the same way
+the TUI does - never via an argument or environment variable.
 
-`.deb`/`.rpm` remain available if you specifically want a system-managed install instead
-(these do need root, because that's what a system package manager is):
+## Using it from an AI agent (MCP)
+
+`wgtui mcp` runs a separate, non-interactive
+[MCP](https://modelcontextprotocol.io) server over stdio, so an AI agent (or
+any MCP client) can drive `wgtui` the same way a human drives the TUI - same
+discovery, same plan-before-apply, same explicit confirmation for every
+mutation. It's a distinct mode, launched by the MCP client itself, not
+something the interactive TUI exposes while it's running.
+
+**If you use Claude Code** (the CLI), one command registers it:
 
 ```bash
-sudo dpkg -i wgtui_*.deb   # Debian/Ubuntu
-sudo rpm -i wgtui_*.rpm    # Fedora
+claude mcp add wgtui --env WGTUI_MASTER_PASSWORD='your vault master password' -- wgtui mcp
 ```
 
-`wgtui version` checks GitHub Releases for a newer version and prints a one-line notice if
-one exists; it never downloads or installs anything itself - `scripts/install.sh` is always
-a deliberate, separate step.
-
-</details>
-
-## AI agent / automation front end (MCP)
-
-`wgtui mcp` runs a separate, non-interactive [MCP](https://modelcontextprotocol.io) server
-over stdio, so an external AI agent (or any MCP client) can drive `wgtui` the same way a
-human drives the TUI - same discovery, same plan-before-apply, same explicit-confirmation
-requirement for every mutation. It's a distinct process/mode, not something the TUI itself
-exposes while running; nothing needs installing beyond `wgtui` itself.
-
-```bash
-WGTUI_MASTER_PASSWORD='your vault master password' wgtui mcp
-```
-
-The vault master password must come from that environment variable specifically - stdin/stdout
-*are* the MCP protocol channel, so there is no terminal left to prompt on. `wgtui mcp` refuses
-to start without it.
-
-Registered tools: `list_servers`, `server_inspect`, `server_diagnose`, `peer_list` (read-only),
-and `peer_add`/`peer_disable`/`peer_enable`/`peer_revoke`/`peer_rotate` (mutating, each gated
-by a `confirm` argument - `confirm=false`, the default, only returns the plan a human would
-see and changes nothing; `confirm=true` applies it). A server's SSH host key must be trusted
-once from a real terminal (`wgtui server inspect`, cli or tui) before that server can be
-driven through MCP - first-trust confirmation has no terminal to render on here and always
-refuses. Full design and the credential/host-key trade-offs this implies:
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#mcp-server-front-end-internalmcpserver) and
-[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) (T10).
-
-### Connecting Claude Desktop or Claude Code to it
-
-Add `wgtui` as a custom MCP server in the client's config (Claude Desktop:
-`claude_desktop_config.json`; Claude Code: `claude mcp add`, or the same JSON shape in its
-own config file):
+**If you use Claude Desktop** (or any other MCP-capable client), add the
+same thing as JSON to its MCP config file (Claude Desktop:
+`claude_desktop_config.json`) and restart the client:
 
 ```json
 {
@@ -158,34 +157,102 @@ own config file):
 }
 ```
 
-The client then launches `wgtui mcp` itself and talks to it over stdio - there is nothing
-else to run by hand. Once connected, just ask the assistant in plain language, e.g. "list my
-wgtui servers" or "show me office's peers" - it discovers the available tools on its own; you
-don't need to name them.
+Either way, that's the entire setup - there is no server to start by hand,
+no port to open, nothing else to run. The client itself launches `wgtui mcp`
+as a subprocess and talks to it over stdio whenever it decides it needs to.
+From then on, just talk to the assistant in plain language in a normal
+conversation - e.g. *"list my wgtui servers"* or *"add a peer called laptop
+on office and show me the QR code"*. You never type a command or name a
+tool; the assistant sees `wgtui`'s tools are available and reaches for them
+on its own, the same way it reaches for any other tool it has.
 
-**About that `WGTUI_MASTER_PASSWORD` line specifically:** this is a real trade-off, not a
-formality. Everywhere else in `wgtui` (cli, tui), the master password only ever exists
-transiently in memory for as long as it's needed. Baked into a client's config file like
-this, it instead sits in **plaintext on disk indefinitely**, protected only by normal
-filesystem permissions on that config file - readable by anything that can read it. If that's
-more exposure than you want, don't put a real secret in a long-lived config file: keep the
-master password to servers you're comfortable an MCP-driving agent (and anything that can
-read that config file) having standing access to, use a vault dedicated to that purpose
-rather than your primary one, or wrap `wgtui mcp` in your own small launcher script that
-pulls the password from your OS keyring (`secret-tool`, `pass`, etc.) at startup instead of a
-static config value - `wgtui` itself only ever reads the literal environment variable, so
-where that value ultimately comes from is entirely up to you.
+**What you get:** `list_servers`, `server_inspect`, `server_diagnose`, and
+`peer_list` are read-only. `peer_add`, `peer_disable`, `peer_enable`,
+`peer_revoke`, and `peer_rotate` mutate, and every one of them takes a
+`confirm` argument that defaults to `false` - the agent is expected to show
+you the resulting plan first and only pass `confirm=true` after you've
+actually agreed to it, the same "plan, then confirm" flow as the TUI and
+CLI. A server's SSH host key has to be trusted once from a real terminal
+(TUI or `wgtui server inspect`) before that server can be driven through
+MCP at all - there's no terminal here to show a first-time fingerprint on,
+so this mode never approves one itself.
+
+**About that `WGTUI_MASTER_PASSWORD` line:** it's a real trade-off, not a
+formality, and worth understanding before you paste a real password into a
+client config. Everywhere else in `wgtui`, the master password only exists
+transiently in memory. Baked into a client's config file like this, it
+instead sits in **plaintext on disk indefinitely**, protected only by that
+file's normal filesystem permissions. If that's more exposure than you
+want: keep a vault used for MCP scoped to servers you're fine with an
+agent having standing access to, use a separate vault from your primary
+one, or wrap `wgtui mcp` in a small launcher script that pulls the password
+from your OS keyring (`secret-tool`, `pass`, ...) instead of a static
+config value - `wgtui` only ever reads the literal environment variable, so
+where that value actually comes from is entirely up to you.
+
+---
+
+## Installing
+
+```bash
+scripts/install.sh          # latest release, or: scripts/install.sh vX.Y.Z
+```
+
+Installs a single static binary, man page, and shell completions under
+`~/.local/` - no root required, ever. Verifies `checksums.txt` before
+installing anything. Re-run it after each release to update; `wgtui
+version` tells you when a newer one exists but never installs it itself.
+
+`.deb`/`.rpm` packages are also published if you specifically want a
+system-managed install instead (these do need root):
+
+```bash
+sudo dpkg -i wgtui_*.deb   # Debian/Ubuntu
+sudo rpm -i wgtui_*.rpm    # Fedora
+```
+
+**Control client:** Linux amd64/arm64, macOS amd64/arm64.
+**Managed server:** Ubuntu, Debian, or Fedora with systemd - macOS is a
+client-only platform here, never a managed server.
+
+### Building from source
+
+```bash
+go build ./...
+```
+
+## Security posture
+
+- The server's WireGuard private key never leaves the server; client
+  private keys never touch the server.
+- Strict SSH host-key verification, always - no option to disable it.
+- Every mutating remote operation uses a locked temporary copy, verifies
+  the result, and rolls back on failure; the copy is kept only if recovery
+  itself fails.
+- No secret is ever passed as a process argument, logged, or included in
+  `--json` output.
+- Local state lives in `~/.wgtui-config/vault.json`, encrypted under your
+  master password. An explicit export creates a `0700` bundle with a
+  profile and QR PNG, both mode `0600`.
+- `wgtui` refuses to run as root, so local keys can't silently end up in
+  root's home directory.
+
+Full write-up, including the MCP front end's different credential model:
+[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
 
 ## Development
 
-Every push is scanned with [Semgrep](https://semgrep.dev) (`p/golang`, `p/security-audit`,
-`p/secrets`) — enforced server-side in CI (`.github/workflows/ci.yml`) and, once you've run
-the one-time setup below, locally too:
-
 ```bash
-scripts/install-git-hooks.sh   # once per clone: enables the pre-push semgrep gate
+scripts/install-git-hooks.sh   # once per clone: enables the pre-push Semgrep gate
 scripts/semgrep-scan.sh        # run it manually any time
 ```
+
+Every push is scanned with [Semgrep](https://semgrep.dev)
+(`p/golang`, `p/security-audit`, `p/secrets`), enforced in CI
+(`.github/workflows/ci.yml`) and, once the hook above is installed,
+locally too. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the
+codebase is organized and [`docs/SPEC.md`](docs/SPEC.md) for the full
+behavioral specification.
 
 ## License
 

@@ -167,7 +167,7 @@ the actual profile file is left to the existing `wgtui peer export` CLI command,
 `wgtui`-generated secret is ever placed in an MCP tool result or, by extension, an agent's
 context, by default.
 
-## Explicitly out of scope for MVP (spec §3.2, §12.2, §6.1)
+## Explicitly out of scope (spec §3.2, §12.2, §6.1)
 
 - Compromise of the remote server's OS/kernel outside of what standard WireGuard + SSH
   hardening already covers — `wgtui` does not add its own daemon or listening port that

@@ -62,6 +62,54 @@ with `git status --short --branch` and `git log -5 --oneline`.
   (0 called vulnerabilities), `go test ./...`, `go test -race ./...`,
   `CGO_ENABLED=0` Darwin amd64/arm64 cross-builds, and `goreleaser check`
   all pass on the changed tree.
+- Pushed `master` directly (commit `23f0b39`); the pre-push Semgrep gate (101
+  rules, 114 files) was clean.
+- Annotated tag `v0.5.4` points at `23f0b39` and is pushed to origin. Release
+  workflow run `31310271718` passed all three jobs (`semgrep`, `validate`,
+  `goreleaser`).
+- GitHub Release `v0.5.4` is published (not draft/prerelease) with
+  `checksums.txt`, four Linux/macOS archives, two `.deb` files and two `.rpm`
+  files.
+- `scripts/install.sh v0.5.4` verified the published Linux amd64 archive and
+  installed `wgtui 0.5.4` at `~/.local/bin/wgtui`.
+- Installed `v0.5.4` binary SHA-256:
+  `f03b3be8b24a4d9bffbd00605e063c4514c7c5d73b85607747c89881f1ea4af0`.
+- Documentation overhaul in the same session (not tied to a version release -
+  no code changed, nothing to compile or tag):
+  - Rewrote `README.md` for a genuinely public audience: what wgtui is, why
+    it's different from wg-easy/Netmaker/Tailscale-style tools, who it's
+    for, plus a demo GIF.
+  - Removed the stale, now-fully-implemented `docs/UI_MENU_REDESIGN_HANDOFF.md`.
+  - Softened "MVP" wording in `docs/ARCHITECTURE.md`/`docs/THREAT_MODEL.md`
+    that read as "unfinished" to an outside reader (`docs/SPEC.md` itself
+    was deliberately left alone - it's an internal, Russian-language formal
+    spec hundreds of code comments cite by section number, not a
+    public-facing document).
+  - Added `CLAUDE.md` at the repo root: the onboarding doc for an AI agent
+    picking up this project (architecture summary, non-negotiable rules,
+    build/test/release commands, the live-tmux-verification testing
+    convention this session leaned on heavily, and a pointer back to this
+    file for current state).
+  - Recorded `docs/assets/demo.gif` with `vhs` (`go install
+    github.com/charmbracelet/vhs@latest`; needed `ttyd` too - no dnf/sudo
+    available in-session, so downloaded upstream's static
+    `ttyd.x86_64` release binary and verified it against `SHA256SUMS`
+    instead) against the disposable VM `192.168.122.245`, not the user's
+    real vault - a fresh scratch `$HOME` with its own vault, a server named
+    "Office VPN", and a peer named "laptop" added live during recording.
+    The demo does show that VM's real private IP on screen (SSH config
+    alias resolution turned out to require a *real* passwd-registered
+    `$HOME`, not an env-var override - OpenSSH silently ignores
+    `~/.ssh/config` otherwise - so the alias approach that would have hidden
+    it didn't pan out); accepted deliberately since a `192.168.x.x` address
+    is private/non-routable and identifies nothing. The source `.tape`
+    script is committed alongside it (`docs/assets/demo.tape`,
+    parameterized via env vars) so the demo can be re-recorded after future
+    UI changes.
+  - The repo is currently **private** - the new README is written as if
+    public-facing, but nobody has changed the actual GitHub visibility
+    setting; that's a separate, deliberate decision for the user to make,
+    not something to flip unilaterally.
 
 ## Completed in the `v0.5.3` release cycle
 

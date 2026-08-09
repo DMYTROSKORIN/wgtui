@@ -58,7 +58,7 @@ are trivially unit-testable.
 
 ### sshtransport
 
-Wraps the system `ssh` binary (spec §6.2 — MVP does not implement its own SSH client).
+Wraps the system `ssh` binary (spec §6.2 — a deliberate choice, not its own SSH client).
 Responsibilities:
 
 - `ssh -G <alias>` resolution to preview host/user/port without leaking secrets (spec §10.1).
@@ -101,13 +101,13 @@ since every previously-tested target, including nas.paynet.one, was already know
 
 ### osadapter
 
-Per-distribution adapters (Ubuntu/Debian/Fedora in MVP) for:
+Per-distribution adapters (Ubuntu/Debian/Fedora, the currently supported distros) for:
 
 - OS/package manager detection from `/etc/os-release`.
 - WireGuard package installation (spec §12).
 - Service management via systemd (`wg-quick@<iface>`) or OpenRC (Stage 4,
   `DetectServiceManager` dispatches independently of distro/package manager - untested
-  against a real OpenRC target, since no MVP distro uses it; exists so a future
+  against a real OpenRC target, since no currently supported distro uses it; exists so a future
   non-systemd distro doesn't need a new abstraction layer).
 - Firewall/NAT backend detection and rule adapters: nftables, iptables, UFW, firewalld
   (spec §13.5). Every mutating call returns a **plan** (exact commands) first; nothing
@@ -319,7 +319,7 @@ mutation by itself.
 6. On an apply failure, `transaction` restores the temporary recovery copy. It reports
    `recovery required` only if that automatic restore also fails (spec §24).
 
-## Platform support (MVP)
+## Platform support
 
 - Control client: Linux amd64/arm64, macOS amd64/arm64.
 - Managed server: Ubuntu, Debian, Fedora — systemd only. macOS is a client-only platform,
