@@ -6,9 +6,10 @@ Active branch: `master`
 
 Release target: `v0.5.8`
 
-Release status: **releasing now** - security-hardening release fixing the
-low-severity and defense-in-depth findings from a full project audit
-(`~/Documents/wgtui-audit-2026-08-09.md`; no critical/high issues found)
+Release status: **v0.5.8 published, installed and complete** -
+security-hardening release fixing the low-severity and defense-in-depth
+findings from a full project audit (`~/Documents/wgtui-audit-2026-08-09.md`;
+no critical/high issues found)
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -54,6 +55,12 @@ with `git status --short --branch` and `git log -5 --oneline`.
   *is* done.
 - `gofmt`, `go build`, `go vet`, `go test ./...`, `go test -race`,
   `staticcheck`, `govulncheck`, semgrep all clean on the changed tree.
+- Pushed `master` directly (commit `717b7da`); pre-push Semgrep gate clean.
+- Annotated tag `v0.5.8` points at `717b7da`; release workflow run
+  `31319713752` passed all three jobs (`semgrep`, `validate`, `goreleaser`).
+- `scripts/install.sh v0.5.8` downloaded, checksum-verified and installed
+  `wgtui 0.5.8` at `~/.local/bin/wgtui`. Installed binary SHA-256:
+  `14f9a40bd0aa69e5e22a547ed4d32c3206d2a161e9ea746ae99f3b2e13f3326d`.
 
 ## Completed in the `v0.5.7` release cycle
 
@@ -731,7 +738,7 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-`v0.5.7` is complete, published and installed; there is no pending release
+`v0.5.8` is complete, published and installed; there is no pending release
 work. Future product work should start from a clean synchronized `master`.
 
 `192.168.122.245` (disposable Ubuntu 24.04 test VM) current state: has a
