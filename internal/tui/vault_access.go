@@ -99,7 +99,12 @@ func (m *model) viewVaultAccess() string {
 	if m.vaultFormError != "" {
 		content += "\n" + dangerStyle.Render(m.vaultFormError)
 	}
+	// One header line, not two: this bar already carries the brand,
+	// version and section title (" wgtui X.Y.Z · secure local access") -
+	// appHeader("Security") used to repeat all three immediately below it,
+	// which is exactly the clutter reported against the server-detail
+	// header in a different spot (see docs/PROJECT_STATUS.md).
 	header := chromeStyle.Width(m.width).Render(" wgtui " + strings.TrimPrefix(Version, "v") + "  ·  secure local access")
-	return header + "\n" + appHeader("Security") + "\n" + fullPanel(m, content) + "\n" +
+	return header + "\n" + fullPanel(m, content) + "\n" +
 		keyBar(m.width, "Enter Continue", "Esc Quit", "Ctrl+C Quit")
 }

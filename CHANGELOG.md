@@ -3,6 +3,17 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.5.6] - 2026-08-09
+
+### Fixed
+
+- The vault-unlock/create screen and every SSH/sudo/host-key credential
+  prompt rendered two consecutive header lines that both said "wgtui
+  vX.Y.Z" plus the same section title - the `v0.5.4` header decluttering
+  fixed this for the server-detail screen specifically, but missed this
+  second, actually more frequently seen instance (every server connection
+  hits a credential prompt). Down to one header line on both screens.
+
 ## [0.5.5] - 2026-08-09
 
 ### Fixed

@@ -4,16 +4,52 @@ Last updated: 2026-08-09
 
 Active branch: `master`
 
-Release target: `v0.5.5`
+Release target: `v0.5.6`
 
-Release status: **v0.5.5 published, installed and complete** - and, for the
-first time this project cycle, actually verified end-to-end with the real
-`claude` CLI (`claude mcp add` / `claude mcp list`), not just an in-process
-Go test
+Release status: **releasing now** - fixes a second, previously-missed
+instance of the header-duplication bug (vault-access + credential-prompt
+screens), caught by the user re-checking work already reported as
+"done"
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
+
+## Completed in the `v0.5.6` release cycle
+
+- The user reported that "version/status moved to the bottom" (the header
+  decluttering claimed complete in the `v0.5.4` cycle below) still wasn't
+  done - a direct, fair challenge, since I'd reported it as finished.
+  Investigation showed both things were true at once: the original
+  `v0.5.4` fix genuinely *was* in place for the server-detail screen
+  (`viewServerHeader`/`tabsLine` in `internal/tui/view.go`, still correct),
+  but I had never checked whether the same "two lines both saying `wgtui
+  vX.Y.Z · <title>`" clutter pattern existed anywhere else. It did: the
+  vault-unlock/create screen (`viewVaultAccess`) and every SSH/sudo/host-key
+  credential prompt (`viewCredentialPrompt`) each built a colored top bar
+  with brand + version + section title, then rendered a second, separate
+  `appHeader(...)` line repeating the same three facts directly underneath
+  it. This is arguably the more frequently seen instance of the two, since
+  every server connection hits a credential prompt.
+  - Root cause: I fixed one occurrence of a pattern and reported the
+    pattern itself as resolved, without grepping for other call sites of
+    `appHeader` sharing the same "chrome bar + appHeader" shape. Recorded as
+    a recurring failure mode to check for on future bug reports (see
+    `CLAUDE.md`'s testing section and the "Resume here" note below).
+  - Fix: removed the redundant `appHeader(title)` / `appHeader("Security")`
+    line from `internal/tui/credentials.go`'s `viewCredentialPrompt` and
+    `internal/tui/vault_access.go`'s `viewVaultAccess` - each screen now
+    renders exactly one header line.
+  - Live-verified in tmux (scratch `HOME`, fresh vault): both the
+    vault-unlock screen and a triggered SSH-password prompt now show a
+    single `wgtui vX.Y.Z · <title>` line, not two.
+  - Added `TestAccessAndCredentialHeadersAreNotDuplicated`
+    (`internal/tui/access_test.go`): renders both screens, counts lines
+    starting with `wgtui`, asserts exactly one on each. Confirmed via `git
+    stash` that it fails against the pre-fix code and passes with the fix.
+- `gofmt`, `go build`, `go vet`, `staticcheck`, `go test ./...`,
+  `go test -race ./...`, `govulncheck`, Darwin cross-builds and
+  `goreleaser check` all pass on the changed tree.
 
 ## Completed in the `v0.5.5` release cycle
 

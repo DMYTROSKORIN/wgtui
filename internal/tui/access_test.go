@@ -36,6 +36,39 @@ func TestVaultUnlockHappensInsideBrandedTUI(t *testing.T) {
 	}
 }
 
+// TestAccessAndCredentialHeadersAreNotDuplicated guards a real bug: the
+// vault-access and credential-prompt screens each built their own colored
+// top bar (brand + version + section title) and then rendered a *second*,
+// separate appHeader() line repeating the exact same three facts right
+// below it - two consecutive lines both starting with "wgtui vX.Y.Z". This
+// is the same "version/status crowds the screen" complaint fixed for the
+// server-detail header (docs/PROJECT_STATUS.md) showing up in a screen
+// every user hits far more often (every SSH/sudo prompt), just missed the
+// first time because it wasn't the screen originally reported.
+func TestAccessAndCredentialHeadersAreNotDuplicated(t *testing.T) {
+	countBrandLines := func(view string) int {
+		n := 0
+		for _, line := range strings.Split(ansi.Strip(view), "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "wgtui") {
+				n++
+			}
+		}
+		return n
+	}
+
+	m := newLockedModel(t.TempDir()+"/vault.json", true)
+	m.width, m.height = 100, 30
+	if n := countBrandLines(m.viewVaultAccess()); n != 1 {
+		t.Errorf("vault access screen has %d lines starting with \"wgtui\", want 1:\n%s", n, ansi.Strip(m.viewVaultAccess()))
+	}
+
+	response := make(chan credentialResponse, 1)
+	m.beginCredentialPrompt(credentialRequestMsg{kind: credentialSSHPassword, target: "Office (demo@203.0.113.10)", response: response})
+	if n := countBrandLines(m.viewCredentialPrompt()); n != 1 {
+		t.Errorf("credential prompt screen has %d lines starting with \"wgtui\", want 1:\n%s", n, ansi.Strip(m.viewCredentialPrompt()))
+	}
+}
+
 func TestAccessAndCredentialScreensFitEveryLayout(t *testing.T) {
 	for _, size := range [][2]int{{64, 18}, {90, 24}, {135, 24}, {204, 40}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
