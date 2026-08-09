@@ -6,10 +6,10 @@ Active branch: `master`
 
 Release target: `v0.5.5`
 
-Release status: **releasing now** - a real MCP server bug (`list_servers`/
-`peer_list` output schemas rejected by Claude Code's client) reported after
-`v0.5.4`'s documentation pass is fixed, tested and merged into `master`;
-this checkpoint is being written as part of tagging and publishing `v0.5.5`
+Release status: **v0.5.5 published, installed and complete** - and, for the
+first time this project cycle, actually verified end-to-end with the real
+`claude` CLI (`claude mcp add` / `claude mcp list`), not just an in-process
+Go test
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -43,6 +43,31 @@ with `git status --short --branch` and `git log -5 --oneline`.
     directly, so it would have caught this before it shipped.
 - `gofmt`, `go build`, `go vet`, `staticcheck`, `go test ./...`,
   `go test -race ./...` pass on the changed tree.
+- Pushed `master` directly (commit `c2fada6`); the pre-push Semgrep gate (101
+  rules, 116 files) was clean.
+- Annotated tag `v0.5.5` points at `c2fada6` and is pushed to origin. Release
+  workflow run `31313747640` passed all three jobs (`semgrep`, `validate`,
+  `goreleaser`).
+- GitHub Release `v0.5.5` is published (not draft/prerelease) with
+  `checksums.txt`, four Linux/macOS archives, two `.deb` files and two `.rpm`
+  files.
+- `scripts/install.sh v0.5.5` verified the published Linux amd64 archive and
+  installed `wgtui 0.5.5` at `~/.local/bin/wgtui`.
+- Installed `v0.5.5` binary SHA-256:
+  `9fefc280e795f19c171edfd4de0c035b80663e86bb48d00ffb4c86b3dc4974a3`.
+- **Verified the actual fix with the real `claude` CLI, not just the Go
+  unit test**, after the user directly asked why this hadn't been done
+  already (fair question - the earlier check only exercised the go-sdk's
+  own in-memory client, a different code path than a real MCP client
+  actually uses). Registered wgtui as a project-scoped MCP server pointing
+  at a throwaway wrapper script + an isolated demo vault (never the user's
+  real one), and ran `claude mcp list` - the exact command the user used
+  to find the bug - against the pre-fix `v0.5.4` binary first, reproducing
+  the identical error (`tools fetch failed — Invalid input: expected
+  "object" ... (+1 more)`, matching exactly the two fixed tools). Re-ran
+  the same command after installing `v0.5.5`: clean `✔ Connected`, no
+  error. Removed the test registration afterward
+  (`claude mcp remove wgtui-test`).
 
 ## Completed in the `v0.5.4` release cycle
 
@@ -555,25 +580,44 @@ with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Resume here
 
-`v0.5.3` is complete, published and installed; there is no pending release
-work. Future product work should start from a clean synchronized `master`. Do
-not repeat the already-passed live install test against `192.168.122.245`
-unless install/discovery behavior changes; that VM currently has WireGuard
-installed with no interface configured.
+`v0.5.5` is complete, published and installed; there is no pending release
+work. Future product work should start from a clean synchronized `master`.
 
-The user tests the live installed binary hands-on (Konsole/KDE) and has now
-reported real, reproducible bugs across three release cycles in a row
-(`v0.5.0`→`v0.5.1`, a bug found while verifying `v0.5.1` itself→`v0.5.2`, then
-a further round of Konsole-specific reports→`v0.5.3`). Every one of them
-turned out to be a genuine code bug, not a terminal/environment quirk - take
-reports like this at face value and look for a real gap first, especially
-anything about "hotkey doesn't respond", visual misalignment, or "mouse
-doesn't work here". A recurring root-cause pattern worth checking early: does
-a *raw*/independent key handler (`updateServerList`, `updateServerDetail`,
-etc.) still bind something the commander-accelerator layer was supposed to
-have moved or renamed? And for layout/geometry bugs: does a renderer that
-builds a multi-line block apply an offset to the whole string (only affects
-the first line) instead of to every line?
+`192.168.122.245` (disposable Ubuntu 24.04 test VM) current state: has a
+dedicated `demo` user (password `demo-password-123`, sudo group member) -
+created specifically so demo recordings never show the operator's real
+login name on screen (see the `v0.5.4`→documentation-pass entry below for
+why). WireGuard is installed and configured on `wg0` with one peer
+("laptop", added through wgtui, matching what `docs/assets/demo.gif`
+shows). Don't repeat the install/configure test from scratch unless
+install/discovery behavior actually changes; do feel free to reuse the
+`demo` account for anything else that needs a non-identifying SSH user on
+this VM (another demo recording, MCP verification, etc.) instead of the
+original `skorin` login.
+
+The user tests the live installed binary hands-on (Konsole/KDE) and has
+reported real, reproducible bugs across every release cycle so far
+(`v0.5.0`→`v0.5.1`, a bug found while verifying `v0.5.1` itself→`v0.5.2`, a
+further round of Konsole-specific reports→`v0.5.3`, a header/scroll/ordering
+round→`v0.5.4`, and a real MCP schema bug caught by actually trying the
+README's own MCP walkthrough→`v0.5.5`). Every single one turned out to be a
+genuine gap, never a terminal/environment quirk or user error - take reports
+like this at face value and look for a real cause first. Recurring patterns
+worth checking early:
+
+- **"Hotkey doesn't respond" / visual misalignment / "mouse doesn't work
+  here":** does a *raw*/independent key handler (`updateServerList`,
+  `updateServerDetail`, etc.) still bind something the commander-accelerator
+  layer was supposed to have moved or renamed? Does a renderer building a
+  multi-line block apply an offset to the whole string (only the first line
+  actually moves) instead of to every line?
+- **Anything MCP-related:** verify with the real `claude` CLI
+  (`claude mcp add`/`claude mcp list`/actually asking Claude to use a tool),
+  not only a Go-level unit test against the SDK's own in-memory client -
+  those exercise different code paths, and the schema-validation bug fixed
+  in `v0.5.5` only ever showed up in the former. This was a direct, fair
+  correction from the user after an earlier claim of "verified" turned out
+  to mean "the unit test passes."
 
 ## Publishing note
 
