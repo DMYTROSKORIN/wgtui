@@ -6,18 +6,15 @@ Active branch: `master`
 
 Release target: `v0.5.9`
 
-Release status: **v0.5.9 published, installed and complete** - two
-reliability fixes found via live verification against a fresh disposable
-target (a local Lima/Ubuntu 26.04 VM, not the usual `192.168.122.245` test
-box), done in service of a broader session preparing the repo to go public
-(new install scripts, README rewrite, Apache 2.0 relicense, refreshed demo
-GIF - see below, still in progress).
+Release status: **v0.5.9 published, installed and complete**, plus a
+following (untagged, docs/config-only) commit that finished a broader
+session preparing the repo to go public - see below for both.
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
 
-## In progress: preparing the repository to go public (2026-08-10)
+## Completed: preparing the repository to go public (2026-08-10)
 
 The user asked to make `DMYTROSKORIN/wgtui` public: relicense MIT to
 Apache 2.0, rewrite `README.md` styled after `DMYTROSKORIN/numi-kde`
@@ -38,9 +35,58 @@ Attempting to prep that VM's peer state (register the server, install
 WireGuard, add a "laptop" peer - the same state the `.tape` script
 expects) surfaced two real, reproducible bugs, confirmed with a
 `-tags manual` reproduction against `internal/sshtransport` directly (not
-just inference) - fixed and released as `v0.5.9` before continuing the
-public-readiness work; see that section below for the fix detail. The
-GIF re-recording itself resumes after this checkpoint.
+just inference) - fixed and released as `v0.5.9` (see that cycle's own
+section below for the fix detail) before continuing the public-readiness
+work.
+
+Re-recording `docs/assets/demo.gif` against that VM with `vhs` (the
+tool the existing `.tape` script is written for) turned out unreliable
+in this specific vhs+ttyd+headless-Chrome setup - it silently dropped
+characters mid-password, desyncing the whole scripted recording. Widened
+the tape's `Sleep`/`TypingSpeed` values for robustness regardless, but
+the actually-published GIF was produced via a documented fallback
+instead: `asciinema rec` wrapping `wgtui` inside a `tmux` session driven
+with real `tmux send-keys` (the same interaction pattern this project's
+own testing philosophy already uses), converted with `agg --speed 2.2`.
+Result is both shorter and smaller than the GIF it replaces (27.9s/467KB
+vs. the old 956KB) and correctly shows the current UI (brand/version line
+at the bottom, a real successful peer add, clean Diagnose output).
+
+License: `LICENSE` replaced with the unmodified Apache License 2.0 text
+(matching how `numi-kde`'s own `LICENSE` is committed - no per-file
+headers, no NOTICE, since nothing here is derived from Apache-2.0-licensed
+third-party code). `.goreleaser.yaml`'s `nfpms` license field updated to
+match; its checksum-comment explaining "no GPG signature" was reworded
+(the "revisit if the project is ever made public" condition it named is
+now true, but adding a signing key is deliberately left as separate
+follow-up work, not bundled into this session).
+
+`scripts/install.sh` no longer depends on `gh`/repo-privacy at all: it
+resolves the target release via `api.github.com/repos/.../releases/...`
+with a plain `curl` (still asking the API for the actual release asset
+name rather than reconstructing it, like the old `gh`-based version did)
+and downloads straight from `github.com/.../releases/download/...`,
+which only works for a *public* repo - verified the JSON-parsing/tag-
+resolution logic live against the still-private repo via a `curl` shim
+injecting a `gh auth token` header (the download step itself 404s against
+a private repo over a plain URL by design; that step still needs a real
+end-to-end check once the repo is actually public - do that before
+trusting the README's one-liner).
+
+Docs audit: found and fixed a stale "The application is in private
+preview" status line in `docs/ARCHITECTURE.md` (there are real public
+releases now) and a personal local file path in `CHANGELOG.md`
+(generalized). Deliberately left alone: this file's own historical
+journal entries and the `192.168.122.245`/local dev paths they mention -
+they're an accurate record of what was actually done in past sessions,
+not instructions, and (per this file's own `v0.5.4`-cycle reasoning
+below) a private/non-routable LAN address identifies nothing.
+
+**Still open:** the actual GitHub visibility flip (`Private` -> `Public`)
+and the resulting live end-to-end test of `scripts/install.sh`'s new
+curl-only download path - both were about to happen right after this
+checkpoint was written, so check `gh repo view DMYTROSKORIN/wgtui --json
+visibility` first if picking this back up cold.
 
 ## Completed in the `v0.5.9` release cycle
 
