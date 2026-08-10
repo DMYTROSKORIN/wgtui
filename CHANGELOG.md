@@ -3,6 +3,28 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.5.10] - 2026-08-10
+
+### Fixed
+
+- Mouse clicks on server list rows (and only server list rows - the top
+  menu, dropdown items, peer table rows, and bottom action bar were all
+  unaffected) silently landed on the row above whichever one was actually
+  clicked, or on nothing at all for the first row. Cause: `v0.5.4` moved
+  the `wgtui vX.Y.Z` brand line from the top of the screen to the bottom,
+  but `serverListRowsRow` - the hardcoded absolute screen row the mouse
+  hit-test uses to figure out which server row a click's Y coordinate
+  falls on - was never updated to match, leaving it one row too low.
+  Reported as "the server list isn't clickable on macOS"; reproduced with
+  a raw SGR mouse click (`printf '\033[<0;COL;ROWM'` equivalent) against a
+  live `tmux` session rather than being macOS-specific - clicking the top
+  menu bar worked, clicking a server row didn't, on any platform. Fixed,
+  and added `TestServerListRowsRowMatchesTheActualRenderedRow`, which
+  renders the real view and checks where a server row actually lands
+  rather than deriving its expected position from the same constant being
+  tested (the existing click tests did that, which is exactly why this
+  shipped unnoticed by the test suite for two releases).
+
 ## [0.5.9] - 2026-08-10
 
 Reliability fixes found during live verification against a target with

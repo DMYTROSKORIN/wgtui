@@ -2,9 +2,11 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/DMYTROSKORIN/wgtui/internal/domain"
 	"github.com/DMYTROSKORIN/wgtui/internal/peerview"
@@ -48,6 +50,40 @@ func TestServerListRowIsMouseClickable(t *testing.T) {
 	m.Update(leftClick(3, serverListRowsRow+1))
 	if m.cursor != 1 {
 		t.Fatalf("clicking the second server row left cursor=%d, want 1", m.cursor)
+	}
+}
+
+// TestServerListRowsRowMatchesTheActualRenderedRow is a real regression
+// test, not a tautology against serverListRowsRow itself (unlike the other
+// tests here, which build their click Y from the constant and so can never
+// catch the constant drifting out of sync with the renderer). It renders
+// the live view and finds the line the first server's own display name
+// actually lands on - exactly the class of bug that shipped once already:
+// appHeader moved from the top of the screen to the bottom in v0.5.4, and
+// serverListRowsRow's hardcoded value (assuming appHeader was still at the
+// top) was never updated, silently mapping every server-row mouse click to
+// the row above whichever one was actually clicked.
+func TestServerListRowsRowMatchesTheActualRenderedRow(t *testing.T) {
+	m := testModel(t, domain.Server{ID: "a", DisplayName: "Zzzalpha9k"}, domain.Server{ID: "b", DisplayName: "Bravo"})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+
+	lines := strings.Split(ansi.Strip(m.View()), "\n")
+	row := -1
+	for i, line := range lines {
+		// The selection marker "▶ " (only ever drawn in front of a row-list
+		// entry, never the details panel's own title on the right, which
+		// shows the same display name unmarked) is what makes this
+		// unambiguous.
+		if strings.Contains(line, "▶ Zzzalpha9k") {
+			row = i
+			break
+		}
+	}
+	if row == -1 {
+		t.Fatalf("selected server row (\"▶ Zzzalpha9k\") not found in rendered view:\n%s", ansi.Strip(m.View()))
+	}
+	if row != serverListRowsRow {
+		t.Errorf("first server row actually renders at line %d, but serverListRowsRow = %d - mouse clicks on server rows land one off", row, serverListRowsRow)
 	}
 }
 

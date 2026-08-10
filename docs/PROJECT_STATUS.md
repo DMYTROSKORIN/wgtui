@@ -4,15 +4,55 @@ Last updated: 2026-08-10
 
 Active branch: `master`
 
-Release target: `v0.5.9`
+Release target: `v0.5.10`
 
-Release status: **v0.5.9 published, installed and complete**, plus a
-following (untagged, docs/config-only) commit that finished a broader
-session preparing the repo to go public - see below for both.
+Release status: **v0.5.10 in progress** - a real mouse-click regression
+(server list rows not clickable) fixed and about to be tagged; see its own
+section below, and further below that, `v0.5.9` and the public-readiness
+session that followed it.
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
+
+## Completed in the `v0.5.10` release cycle
+
+User report: "on macOS, the server list isn't clickable with the mouse -
+I thought we fixed that." Reproduced live rather than guessing: built the
+current binary, drove it in a `tmux` session with a real two-server vault,
+and sent raw SGR mouse sequences via `tmux send-keys -H` (per this file's
+own live-testing convention). Clicking the top menu bar worked
+immediately; clicking either server row did nothing (or silently
+re-selected the already-selected row) - not a macOS/terminal-emulator
+issue, a real logic bug reachable from any platform.
+
+Root cause: `internal/tui/view.go`'s `serverListRowsRow` constant hardcodes
+the absolute screen row server list rows start at, for `mouse.go`'s click
+hit-test to convert a click's Y coordinate into a server index. `v0.5.4`
+moved the `wgtui vX.Y.Z` brand line from the top of the screen to the
+bottom (see that cycle below) - which shifted every row on the server list
+screen up by one - but `serverListRowsRow` was never updated to match,
+left at the old value that assumed the brand line was still at the top.
+Every server-row click landed one row off: clicking row N selected row
+N-1, and clicking the very first row computed a negative index and was
+silently ignored.
+
+Fixed by correcting the constant (5 -> 4) and its comment. Also added
+`TestServerListRowsRowMatchesTheActualRenderedRow`
+(`internal/tui/mouse_test.go`), which renders the actual view and locates
+where the selected server's row really appears (via its "▶ " marker, to
+not be fooled by the details panel showing the same server name as its
+own title) rather than trusting the constant it's checking - confirmed
+this test fails against the pre-fix value and passes against the fix.
+The existing click tests (`TestServerListRowIsMouseClickable` etc.) all
+derive their click coordinates *from* `serverListRowsRow` itself, so they
+passed throughout - a tautology that could never have caught this class of
+drift, which is exactly why it shipped unnoticed for two releases.
+Live-verified again post-fix in tmux: clicking each server row now
+selects that row and updates the details panel, in both directions.
+`gofmt`, `go build`, `go vet`, `go test ./...`, `go test -race
+./internal/tui/...`, `staticcheck`, `govulncheck`, `scripts/semgrep-scan.sh`
+all clean.
 
 ## Completed: preparing the repository to go public (2026-08-10)
 

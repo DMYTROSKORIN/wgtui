@@ -380,9 +380,13 @@ func tabClickTarget(x int) (tab detailTab, ok bool) {
 // viewServerList, for both the compact and wide layout (both build the
 // exact same "Servers\n\n" + one line per server content, just inside a
 // differently-sized left panel starting at the same X=0): row 0 top menu
-// bar, row 1 appHeader, row 2 panel top border, row 3 "Servers" title,
-// row 4 blank line, row 5 the first server.
-const serverListRowsRow = 5
+// bar, row 1 panel top border, row 2 "Servers" title, row 3 blank line,
+// row 4 the first server. (appHeader moved to the bottom of the screen in
+// v0.5.4 - this constant was never updated to match, leaving every server
+// row's mouse click hit-test off by one and silently mapping to the row
+// above whatever was actually clicked, e.g. row 2 never hit-testing to
+// anything since row 2 - serverListRowsRow was negative.)
+const serverListRowsRow = 4
 
 // serverListLeftWidth is the wide-layout server list's left (server rows)
 // panel width - shared between the renderer and the mouse hit-test so a
