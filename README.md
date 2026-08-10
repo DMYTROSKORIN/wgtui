@@ -11,7 +11,7 @@
 
 ---
 
-*(a demo recording is in the works and will land here)*
+![wgtui: unlocking the vault, connecting to a server, adding a peer, and scanning its QR code](docs/assets/demo.gif)
 
 ---
 

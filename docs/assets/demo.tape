@@ -60,8 +60,16 @@
 #      the `\x1b[H` cursor-home sequence), never the first chunk that
 #      happens to contain the matched text - holding on an early chunk
 #      freezes the GIF on a half-drawn/overlapping screen.
-#   4. `agg --font-size 18 --theme dracula out.cast docs/assets/demo.gif`
-#      (no --speed needed if step 3's deltas are already sane).
+#   4. Keep `--font-size` modest (12, not 18) and the pane no taller than
+#      it needs to be - a 112x65 pane at font-size 18 rendered a ~970KB,
+#      824x1663px GIF for a README hero image, most of it just tall empty
+#      panel padding below each screen's actual content. font-size 12 at
+#      the same 112x65 cuts that roughly in half on its own.
+#   5. `agg --font-size 12 --theme dracula --fps-cap 12 out.cast raw.gif`,
+#      then `gifsicle -O3 --lossy=60 --colors 128 raw.gif -o
+#      docs/assets/demo.gif` - lossy GIF compression doesn't noticeably
+#      degrade terminal text or even the dense QR-code screen, and cut the
+#      final file from ~970KB to ~270KB in practice.
 
 Output "docs/assets/demo.gif"
 
