@@ -6,8 +6,8 @@ Active branch: `master`
 
 Release target: `v0.5.10`
 
-Release status: **v0.5.10 in progress** - a real mouse-click regression
-(server list rows not clickable) fixed and about to be tagged; see its own
+Release status: **v0.5.10 published, installed and complete** - a real
+mouse-click regression (server list rows not clickable) fixed; see its own
 section below, and further below that, `v0.5.9` and the public-readiness
 session that followed it.
 
@@ -53,6 +53,13 @@ selects that row and updates the details panel, in both directions.
 `gofmt`, `go build`, `go vet`, `go test ./...`, `go test -race
 ./internal/tui/...`, `staticcheck`, `govulncheck`, `scripts/semgrep-scan.sh`
 all clean.
+- Pushed `master` directly (commit `7df75ea`); pre-push checks clean.
+  Annotated tag `v0.5.10` points at `7df75ea`. Release workflow run
+  `31396359684` passed all three jobs (`validate`, `semgrep`,
+  `goreleaser`).
+- `scripts/install.sh v0.5.10` downloaded, checksum-verified and installed
+  `wgtui 0.5.10` at `~/.local/bin/wgtui`. Installed binary SHA-256:
+  `6ce0221b273b40712518bafa390e327e28a2255d48ec1d8dd18970920d8fa197`.
 
 ## Completed: preparing the repository to go public (2026-08-10)
 
