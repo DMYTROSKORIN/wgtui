@@ -69,9 +69,10 @@ and downloads straight from `github.com/.../releases/download/...`,
 which only works for a *public* repo - verified the JSON-parsing/tag-
 resolution logic live against the still-private repo via a `curl` shim
 injecting a `gh auth token` header (the download step itself 404s against
-a private repo over a plain URL by design; that step still needs a real
-end-to-end check once the repo is actually public - do that before
-trusting the README's one-liner).
+a private repo over a plain URL by design), then re-verified for real
+after the visibility flip below: the actual published one-liner, run in a
+fully clean `env -i` shell with no `gh`, no auth, and an isolated `$HOME`,
+downloaded, checksum-verified, and installed `wgtui 0.5.9` correctly.
 
 Docs audit: found and fixed a stale "The application is in private
 preview" status line in `docs/ARCHITECTURE.md` (there are real public
@@ -82,11 +83,9 @@ they're an accurate record of what was actually done in past sessions,
 not instructions, and (per this file's own `v0.5.4`-cycle reasoning
 below) a private/non-routable LAN address identifies nothing.
 
-**Still open:** the actual GitHub visibility flip (`Private` -> `Public`)
-and the resulting live end-to-end test of `scripts/install.sh`'s new
-curl-only download path - both were about to happen right after this
-checkpoint was written, so check `gh repo view DMYTROSKORIN/wgtui --json
-visibility` first if picking this back up cold.
+`DMYTROSKORIN/wgtui`'s GitHub visibility was flipped from `Private` to
+`Public` (`gh repo edit --visibility public`) after everything above was
+committed and pushed. Nothing else is open from this session.
 
 ## Completed in the `v0.5.9` release cycle
 
