@@ -6,12 +6,12 @@ Active branch: `master`
 
 Release target: `v0.5.9`
 
-Release status: **v0.5.9 in progress** - two reliability fixes found via
-live verification against a fresh disposable target (a local Lima/Ubuntu
-26.04 VM, not the usual `192.168.122.245` test box), done in service of a
-broader session preparing the repo to go public (new install scripts,
-README rewrite, Apache 2.0 relicense, refreshed demo GIF - see below and
-continue there once this release is tagged).
+Release status: **v0.5.9 published, installed and complete** - two
+reliability fixes found via live verification against a fresh disposable
+target (a local Lima/Ubuntu 26.04 VM, not the usual `192.168.122.245` test
+box), done in service of a broader session preparing the repo to go public
+(new install scripts, README rewrite, Apache 2.0 relicense, refreshed demo
+GIF - see below, still in progress).
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
@@ -83,6 +83,13 @@ previously-tested server exercised.
   there with the right `AllowedIPs`.
 - `gofmt`, `go build`, `go vet`, `go test ./...`, `go test -race ./...`,
   `staticcheck`, `govulncheck`, `scripts/semgrep-scan.sh` all clean.
+- Pushed `master` directly (commit `9ccfe41`); pre-push checks clean.
+  Annotated tag `v0.5.9` points at `9ccfe41`. Release workflow run
+  `31384657921` passed all three jobs (`validate`, `semgrep`,
+  `goreleaser`).
+- `scripts/install.sh v0.5.9` downloaded, checksum-verified and installed
+  `wgtui 0.5.9` at `~/.local/bin/wgtui`. Installed binary SHA-256:
+  `c8aba803e4aed683c80d7b7a66d51e7edfeacc607e032572c2a01830aab4b3c7`.
 
 ## Completed in the `v0.5.8` release cycle
 
