@@ -26,6 +26,18 @@
 #   DEMO_VAULT_PASSWORD='demopassword123' \
 #   DEMO_SSH_PASSWORD='...' \
 #     vhs docs/assets/demo.tape
+#
+# The Sleep/TypingSpeed values here are deliberately generous (confirmed
+# needed on a fresh vhs+ttyd+headless-Chrome setup, which otherwise
+# silently dropped characters mid-password and desynced the whole
+# recording - Esc later in the script then quit the app early because the
+# vault was never actually unlocked). If vhs still proves unreliable in a
+# given environment, the same flow can be driven directly instead:
+# `asciinema rec --command 'HOME=$DEMO_HOME wgtui' out.cast` in one
+# terminal, drive it with real keystrokes (or `tmux send-keys` against the
+# session running that command) following this file's steps, then
+# `agg --font-size 18 --theme dracula --speed 2.2 --idle-time-limit 2
+# out.cast docs/assets/demo.gif`.
 
 Output "docs/assets/demo.gif"
 
@@ -36,17 +48,17 @@ Set Height 760
 Set Padding 20
 Set WindowBar Colorful
 Set Theme "Dracula"
-Set TypingSpeed 40ms
+Set TypingSpeed 100ms
 
 Hide
 Type "clear && HOME=$DEMO_HOME wgtui"
 Enter
-Sleep 1s
+Sleep 2s
 Show
 
 # Unlock the existing local vault
-Sleep 800ms
-Type "$DEMO_VAULT_PASSWORD" Sleep 300ms
+Sleep 1500ms
+Type "$DEMO_VAULT_PASSWORD" Sleep 500ms
 Enter
 Sleep 1s
 
@@ -56,10 +68,12 @@ Enter
 Sleep 2s
 
 # SSH + sudo prompts
-Type "$DEMO_SSH_PASSWORD" Sleep 300ms
+Sleep 500ms
+Type "$DEMO_SSH_PASSWORD" Sleep 500ms
 Enter
 Sleep 2s
-Type "$DEMO_SSH_PASSWORD" Sleep 300ms
+Sleep 500ms
+Type "$DEMO_SSH_PASSWORD" Sleep 500ms
 Enter
 Sleep 3500ms
 
