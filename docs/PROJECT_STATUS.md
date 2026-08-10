@@ -6,10 +6,14 @@ Active branch: `master`
 
 Release target: `v0.5.11`
 
-Release status: **v0.5.11 in progress** - a UX follow-up to `v0.5.10`
-(server row click now opens, not just selects) about to be tagged; see its
-own section below, then `v0.5.10`, then `v0.5.9` and the public-readiness
-session that followed it.
+Release status: **v0.5.11 published, installed and complete** - a UX
+follow-up to `v0.5.10` (server row click now opens, not just selects); see
+its own section below, then `v0.5.10`, then `v0.5.9` and the
+public-readiness session that followed it.
+
+This file is the durable restart point for work on `wgtui`. After an interrupted
+session, read it before changing code, then confirm the actual repository state
+with `git status --short --branch` and `git log -5 --oneline`.
 
 ## Completed in the `v0.5.11` release cycle
 
@@ -41,10 +45,13 @@ immediately shows "Connecting and running discovery..." instead of no
 visible change. `gofmt`, `go build`, `go vet`, `go test ./...`, `go test
 -race ./internal/tui/...`, `staticcheck`, `govulncheck`,
 `scripts/semgrep-scan.sh` all clean.
-
-This file is the durable restart point for work on `wgtui`. After an interrupted
-session, read it before changing code, then confirm the actual repository state
-with `git status --short --branch` and `git log -5 --oneline`.
+- Pushed `master` directly (commit `4b3dbc8`); pre-push checks clean.
+  Annotated tag `v0.5.11` points at `4b3dbc8`. Release workflow run
+  `31399323300` passed all three jobs (`validate`, `semgrep`,
+  `goreleaser`).
+- `scripts/install.sh v0.5.11` downloaded, checksum-verified and installed
+  `wgtui 0.5.11` at `~/.local/bin/wgtui`. Installed binary SHA-256:
+  `02680a4f5c26ba46ce0d6a40b89bf1d766c7c709e5bee847a7fbae0b9eca0b96`.
 
 ## Completed in the `v0.5.10` release cycle
 
