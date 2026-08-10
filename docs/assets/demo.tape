@@ -31,13 +31,37 @@
 # needed on a fresh vhs+ttyd+headless-Chrome setup, which otherwise
 # silently dropped characters mid-password and desynced the whole
 # recording - Esc later in the script then quit the app early because the
-# vault was never actually unlocked). If vhs still proves unreliable in a
-# given environment, the same flow can be driven directly instead:
-# `asciinema rec --command 'HOME=$DEMO_HOME wgtui' out.cast` in one
-# terminal, drive it with real keystrokes (or `tmux send-keys` against the
-# session running that command) following this file's steps, then
-# `agg --font-size 18 --theme dracula --speed 2.2 --idle-time-limit 2
-# out.cast docs/assets/demo.gif`.
+# vault was never actually unlocked).
+#
+# In practice vhs has been unreliable enough on a fresh machine that the
+# actually-published GIF was produced with a different toolchain instead -
+# worth reaching for directly rather than fighting vhs again:
+#
+#   1. `asciinema rec --command 'HOME=$DEMO_HOME wgtui' out.cast` inside a
+#      tmux pane sized to the FINAL dimensions you want (e.g.
+#      `tmux new-session -x 112 -y 65 ...`). Do not resize the pane mid-
+#      recording - agg's rendering of everything *after* a resize event
+#      breaks (screens after it come out blank/overlapping) even though
+#      the underlying cast data is fine; asciinema-cast player elsewhere
+#      may not have this problem, but agg does. Pick a size tall enough
+#      for the QR screen (`peer add` -> "Show QR code") up front instead.
+#   2. Drive it with `tmux send-keys` against that session, following this
+#      file's steps, with real pauses between actions (a couple of
+#      seconds on each screen) so a viewer can actually read it - don't
+#      try to make it snappy, that reads as confusing, not polished.
+#   3. Tool round-trip latency between your own driving commands gets
+#      recorded as real idle time on the cast, easily bloating a ~40s
+#      demo to 200s+. Fix it by editing the .cast JSON lines directly
+#      (each is `[delta_seconds, "o"|"r", data]`) rather than fighting it
+#      live: cap ordinary deltas to something small (~0.05s), then assign
+#      real hold durations only at specific content-matched moments - but
+#      anchor each hold to the *last* event of that screen's paint burst
+#      (chunks keep arriving in small pieces; a full repaint starts with
+#      the `\x1b[H` cursor-home sequence), never the first chunk that
+#      happens to contain the matched text - holding on an early chunk
+#      freezes the GIF on a half-drawn/overlapping screen.
+#   4. `agg --font-size 18 --theme dracula out.cast docs/assets/demo.gif`
+#      (no --speed needed if step 3's deltas are already sane).
 
 Output "docs/assets/demo.gif"
 
