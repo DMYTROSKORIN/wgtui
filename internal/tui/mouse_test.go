@@ -41,7 +41,13 @@ func TestDropdownItemsAreMouseClickableAndDisabledItemsAreSafe(t *testing.T) {
 	}
 }
 
-func TestServerListRowIsMouseClickable(t *testing.T) {
+// TestServerListRowClickOpensTheServer matches Enter's own behavior: a
+// single click on a server row opens it directly (selects it and starts
+// connect+discovery), not just a select-then-a-second-action-required like
+// Up/Down. Reported live: with exactly one server in the list (already
+// selected by default, nothing else to visibly select), a select-only
+// click looked indistinguishable from doing nothing at all.
+func TestServerListRowClickOpensTheServer(t *testing.T) {
 	m := testModel(t, domain.Server{ID: "a", DisplayName: "Alpha"}, domain.Server{ID: "b", DisplayName: "Bravo"})
 	m.width, m.height = 100, 24
 	if m.cursor != 0 {
@@ -50,6 +56,12 @@ func TestServerListRowIsMouseClickable(t *testing.T) {
 	m.Update(leftClick(3, serverListRowsRow+1))
 	if m.cursor != 1 {
 		t.Fatalf("clicking the second server row left cursor=%d, want 1", m.cursor)
+	}
+	if m.screen != screenServerDetail {
+		t.Fatalf("clicking the second server row left screen=%v, want screenServerDetail (a click should open, not just select)", m.screen)
+	}
+	if m.selected.ID != "b" {
+		t.Fatalf("clicking the second server row selected %q, want \"b\"", m.selected.ID)
 	}
 }
 

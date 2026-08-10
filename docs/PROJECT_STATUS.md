@@ -4,12 +4,43 @@ Last updated: 2026-08-10
 
 Active branch: `master`
 
-Release target: `v0.5.10`
+Release target: `v0.5.11`
 
-Release status: **v0.5.10 published, installed and complete** - a real
-mouse-click regression (server list rows not clickable) fixed; see its own
-section below, and further below that, `v0.5.9` and the public-readiness
+Release status: **v0.5.11 in progress** - a UX follow-up to `v0.5.10`
+(server row click now opens, not just selects) about to be tagged; see its
+own section below, then `v0.5.10`, then `v0.5.9` and the public-readiness
 session that followed it.
+
+## Completed in the `v0.5.11` release cycle
+
+Direct follow-up to `v0.5.10`, same conversation: the user confirmed the
+row-click fix was live (`v0.5.10` installed from `~/.local/bin`, Terminal.app,
+top menu/buttons already worked) but said clicking their one server
+("Office 308") still didn't seem to do anything.
+
+Talked through it rather than guessing at another rendering bug: with
+exactly one server, it's always already selected (`▶`), so a select-only
+click (the `v0.5.10` fix's actual, correct behavior - matching Up/Down,
+not "open") has no visible effect - indistinguishable from a click doing
+nothing at all. The user confirmed that's what they were hitting, and that
+they expected a single click to open the server directly, GUI-list-style.
+`internal/tui/mouse.go`'s own comment had documented "selects, not open"
+as a deliberate choice, but given a real user expects otherwise, changed
+it rather than defending the original design: extracted the "select this
+index, open its dashboard, start connect+discovery" sequence Enter already
+ran (`updateServerList`'s `"enter"` case) into a new `model.openServerAt`,
+called from both Enter and the row click handler, so the two input paths
+can't drift apart the way `serverListRowsRow` once did between the
+renderer and the click hit-test.
+
+Added `TestServerListRowClickOpensTheServer` (replaces the old select-only
+assertion) checking both the cursor move and the screen transition to
+`screenServerDetail`. Live-verified in tmux with a single-server vault
+("Office 308", matching the user's exact report): clicking its row now
+immediately shows "Connecting and running discovery..." instead of no
+visible change. `gofmt`, `go build`, `go vet`, `go test ./...`, `go test
+-race ./internal/tui/...`, `staticcheck`, `govulncheck`,
+`scripts/semgrep-scan.sh` all clean.
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state

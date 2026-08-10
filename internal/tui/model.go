@@ -515,26 +515,36 @@ func (m *model) updateServerList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.startPasswordForm()
 		return m, m.passwordForm.Init()
 	case "enter":
-		if len(servers) == 0 {
-			return m, nil
-		}
-		m.clearStatus()
-		m.selected = servers[m.cursor]
-		m.screen = screenServerDetail
-		m.tab = tabOverview
-		m.loading = true
-		m.detailErr = ""
-		m.report = discovery.Report{}
-		m.peerRequestID++
-		m.peers = nil
-		m.peersLoaded = false
-		m.peersRefreshing = false
-		m.peersErr = ""
-		m.peerReconnected = false
-		m.checksLoaded = false
-		return m, m.connectAndDiscoverCmd(m.selected)
+		return m.openServerAt(m.cursor)
 	}
 	return m, nil
+}
+
+// openServerAt selects and opens the server at index idx - the server
+// list's "enter" key and a row's mouse click both do exactly this, single
+// click included (not select-then-require-a-second-action): shared here so
+// the two input paths can't drift the way serverListRowsRow once did.
+func (m *model) openServerAt(idx int) (tea.Model, tea.Cmd) {
+	servers := m.vault.Registry.Servers
+	if idx < 0 || idx >= len(servers) {
+		return m, nil
+	}
+	m.cursor = idx
+	m.clearStatus()
+	m.selected = servers[idx]
+	m.screen = screenServerDetail
+	m.tab = tabOverview
+	m.loading = true
+	m.detailErr = ""
+	m.report = discovery.Report{}
+	m.peerRequestID++
+	m.peers = nil
+	m.peersLoaded = false
+	m.peersRefreshing = false
+	m.peersErr = ""
+	m.peerReconnected = false
+	m.checksLoaded = false
+	return m, m.connectAndDiscoverCmd(m.selected)
 }
 
 func (m *model) updateServerDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

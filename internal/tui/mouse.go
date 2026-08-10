@@ -32,13 +32,15 @@ func (m *model) updateCommanderMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Clicking a server row selects it - the same thing Up/Down already do,
-	// not "open"; O/Enter still open it explicitly. viewServerList uses the
-	// two-panel layout (a details panel directly to the right of the row
-	// list, at the same Y range) for anything other than the compact
-	// single-panel layout - not just layoutWide specifically - so a click
-	// must stay within the row list's own width there too, or clicking
-	// server details text could be misread as picking a different row.
+	// Clicking a server row opens it directly, the same as Enter - a single
+	// click is expected to behave like a GUI list's click-to-open, not
+	// require a second explicit action after merely selecting. viewServerList
+	// uses the two-panel layout (a details panel directly to the right of
+	// the row list, at the same Y range) for anything other than the
+	// compact single-panel layout - not just layoutWide specifically - so a
+	// click must stay within the row list's own width there too, or
+	// clicking server details text could be misread as picking a different
+	// row.
 	if !m.menuOpen && m.screen == screenServerList {
 		inRowList := true
 		if layoutModeFor(m.width, m.height) != layoutCompact {
@@ -47,8 +49,7 @@ func (m *model) updateCommanderMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		servers := m.vault.Registry.Servers
 		start, end := m.serverListRows(m.serverListVisibleRows())
 		if row := start + (event.Y - serverListRowsRow); inRowList && row >= start && row < end && row < len(servers) {
-			m.cursor = row
-			return m, nil
+			return m.openServerAt(row)
 		}
 	}
 

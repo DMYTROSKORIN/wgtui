@@ -3,6 +3,19 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.5.11] - 2026-08-10
+
+### Changed
+
+- Clicking a server row now opens it directly (selects and starts
+  connect+discovery), the same as pressing Enter, instead of only
+  selecting it the way Up/Down do. Reported after the `v0.5.10` fix: with
+  a single server in the list (already selected by default, nothing else
+  to visibly select), a select-only click looked identical to doing
+  nothing at all, and the expectation - a single click behaving like a
+  GUI list's click-to-open - is reasonable enough to just match rather
+  than document around.
+
 ## [0.5.10] - 2026-08-10
 
 ### Fixed
