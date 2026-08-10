@@ -327,7 +327,7 @@ mutation by itself.
 
 ## Status
 
-The architecture above is implemented. The application is in private preview:
-all three front ends and the shared mutation, discovery, encrypted-vault and
-platform-adapter layers exist. Remaining work is driven by real-server
-compatibility testing and user feedback rather than package scaffolding.
+The architecture above is implemented: all three front ends and the shared
+mutation, discovery, encrypted-vault and platform-adapter layers exist.
+Remaining work is driven by real-server compatibility testing and user
+feedback rather than package scaffolding.

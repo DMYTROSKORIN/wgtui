@@ -42,11 +42,10 @@ archives:
       - completions/*
 
 # sha256sum --ignore-missing -c checksums.txt verifies a downloaded
-# archive against this. No GPG signature: this is a private, personal
-# project (not distributed to third parties), so a detached signature
-# defending against a spoofed release would be adding a key to protect
-# against a threat model that doesn't apply here. Revisit if the project
-# is ever made public.
+# archive against this. No GPG signature yet: the project only just went
+# public and there's no key/trust infrastructure around one yet - a
+# detached signature is worth adding later, but is a separate piece of
+# work from making the repo and its releases visible in the first place.
 checksum:
   name_template: "checksums.txt"
 
@@ -57,7 +56,7 @@ nfpms:
     homepage: https://github.com/DMYTROSKORIN/wgtui
     maintainer: "D.SKORIN <dev@skorin.online>"
     description: Terminal UI and CLI for managing remote WireGuard servers over SSH
-    license: MIT
+    license: Apache-2.0
     formats:
       - deb
       - rpm

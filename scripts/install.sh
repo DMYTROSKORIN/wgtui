@@ -5,25 +5,31 @@
 # .deb/.rpm packages remain available for anyone who specifically wants a
 # system-managed install instead; this is the default, no-sudo path.
 #
-# Downloads a release (latest by default, or `install.sh vX.Y.Z`) via the
-# GitHub CLI - this repo is private, so a plain `curl` of the asset URL
-# can't authenticate, but `gh` already carries that auth - and verifies
-# checksums.txt before installing anything.
+# Downloads a release (latest by default, or a pinned version) straight
+# from GitHub Releases and verifies checksums.txt before installing
+# anything.
 #
 # Usage:
-#   scripts/install.sh          # latest release
-#   scripts/install.sh v0.1.0   # a specific release
+#   curl -fsSL https://raw.githubusercontent.com/DMYTROSKORIN/wgtui/master/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/DMYTROSKORIN/wgtui/master/scripts/install.sh | WGTUI_VERSION=v0.5.9 bash
+#   scripts/install.sh          # from a local clone: latest release
+#   scripts/install.sh v0.5.9   # from a local clone: a specific release
 set -euo pipefail
 
 REPO="DMYTROSKORIN/wgtui"
-VERSION="${1:-latest}"
+VERSION="${WGTUI_VERSION:-${1:-latest}}"
 
-if ! command -v gh >/dev/null 2>&1; then
-	echo "install.sh: the GitHub CLI (\`gh\`) is required - this repo is private, so a plain download can't authenticate." >&2
+if ! command -v curl >/dev/null 2>&1; then
+	echo "install.sh: curl is required but not installed" >&2
 	exit 1
 fi
-if ! gh auth status >/dev/null 2>&1; then
-	echo "install.sh: \`gh\` is not authenticated - run \`gh auth login\` first." >&2
+
+if command -v sha256sum >/dev/null 2>&1; then
+	checksum_cmd() { sha256sum --ignore-missing -c checksums.txt; }
+elif command -v shasum >/dev/null 2>&1; then
+	checksum_cmd() { shasum -a 256 --ignore-missing -c checksums.txt; }
+else
+	echo "install.sh: neither sha256sum nor shasum found - can't verify the download" >&2
 	exit 1
 fi
 
@@ -47,29 +53,38 @@ aarch64 | arm64) arch=arm64 ;;
 esac
 
 if [ "$VERSION" = "latest" ]; then
-	tag="$(gh release view --repo "$REPO" --json tagName --jq .tagName)"
+	release_url="https://api.github.com/repos/${REPO}/releases/latest"
 else
-	tag="$VERSION"
+	release_url="https://api.github.com/repos/${REPO}/releases/tags/${VERSION}"
 fi
+release_json="$(curl -fsSL "$release_url")"
 
-# Asked the release for its actual asset names instead of reconstructing
+tag="$(printf '%s' "$release_json" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
+[ -n "$tag" ] || {
+	echo "install.sh: could not resolve release '$VERSION' - check the version/tag exists" >&2
+	exit 1
+}
+
+# Asked the release for its actual asset name instead of reconstructing
 # "wgtui_${version#v}_${os}_${arch}.tar.gz" by hand - one less place that
 # breaks if the archive naming ever changes.
-archive_name="$(gh release view "$tag" --repo "$REPO" --json assets --jq '.assets[].name' | grep -E "_${os}_${arch}\.tar\.gz\$" | head -1)"
-if [ -z "$archive_name" ]; then
+archive_name="$(printf '%s' "$release_json" | grep '"name"' | sed 's/.*"name": *"\([^"]*\)".*/\1/' | grep -E "_${os}_${arch}\.tar\.gz\$" | head -1)"
+[ -n "$archive_name" ] || {
 	echo "install.sh: no $os/$arch archive found in release $tag" >&2
 	exit 1
-fi
+}
+download_base="https://github.com/${REPO}/releases/download/${tag}"
 
 echo "install.sh: installing wgtui $tag ($os/$arch)..."
 
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
-gh release download "$tag" --repo "$REPO" -D "$workdir" -p "checksums.txt" -p "$archive_name" --clobber
+curl -fsSL --progress-bar "${download_base}/${archive_name}" -o "$workdir/${archive_name}"
+curl -fsSL "${download_base}/checksums.txt" -o "$workdir/checksums.txt"
 (
 	cd "$workdir"
-	sha256sum --ignore-missing -c checksums.txt
+	checksum_cmd
 	tar xzf "$archive_name"
 )
 

@@ -1,20 +1,78 @@
-# wgtui
+<div align="center">
+  <h1>wgtui</h1>
+  <p><strong>A terminal control panel for the WireGuard servers you already run.<br>No web dashboard. No agent daemon. No mesh network to join.</strong></p>
 
-**A terminal control panel for the WireGuard servers you already run.**
+  [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+  [![Release](https://img.shields.io/github/v/release/DMYTROSKORIN/wgtui?color=brightgreen)](https://github.com/DMYTROSKORIN/wgtui/releases/latest)
+  [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-5294e2?logo=linux&logoColor=white)](#installing)
+  [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev)
+  [![Built with Bubble Tea](https://img.shields.io/badge/TUI-Bubble%20Tea-FF69B4?logo=charmbracelet&logoColor=white)](https://github.com/charmbracelet/bubbletea)
+</div>
+
+---
+
+![wgtui: opening a server, browsing Overview/Peers/Diagnose, and the top menu](docs/assets/demo.gif)
+
+---
+
+## Installing
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DMYTROSKORIN/wgtui/master/scripts/install.sh | bash
+```
+
+Same command on **Linux and macOS** (amd64 or arm64) - the script detects
+your OS/arch, downloads the matching release, verifies `checksums.txt`,
+and installs a single static binary, man page, and shell completions
+under `~/.local/` - no root required, ever. Re-run it after each release
+to update; `wgtui version` tells you when a newer one exists but never
+installs it itself.
+
+<details>
+<summary>More install options</summary>
+
+**Install a specific version:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DMYTROSKORIN/wgtui/master/scripts/install.sh | WGTUI_VERSION=v0.5.9 bash
+```
+
+**From a local clone:**
+
+```bash
+scripts/install.sh          # latest release
+scripts/install.sh v0.5.9   # a specific release
+```
+
+**`.deb`/`.rpm` packages** are also published if you specifically want a
+system-managed install instead (these do need root):
+
+```bash
+sudo dpkg -i wgtui_*.deb   # Debian/Ubuntu
+sudo rpm -i wgtui_*.rpm    # Fedora
+```
+
+**Build from source:**
+
+```bash
+go build ./...
+```
+
+</details>
+
+**Control client:** Linux amd64/arm64, macOS amd64/arm64.
+**Managed server:** Ubuntu, Debian, or Fedora with systemd - macOS is a
+client-only platform here, never a managed server.
+
+---
+
+## Why wgtui
 
 `wgtui` connects to your own Linux server over plain SSH, discovers whatever
 WireGuard setup is already there (or helps you build one from scratch), and
 gives you a fast, keyboard-and-mouse-driven terminal UI to manage interfaces
 and peers - without installing anything but standard `wireguard-tools` on
 the server itself.
-
-No web dashboard. No agent daemon. No new open port. No mesh network to
-join. Just your server, SSH, and vanilla WireGuard - the way it already
-works, with a good interface put in front of it.
-
----
-
-## Why wgtui
 
 Most WireGuard tooling asks you to change how your VPN works: adopt a mesh
 network and a coordination server (Tailscale, Headscale, Netmaker), or run a
@@ -50,7 +108,7 @@ of-`vim`-on-a-VPS part.
 - **Manages more than one server.** Every server you add lives in one
   encrypted local registry, switchable from the same screen.
 
-## Who it's for
+### Who it's for
 
 Anyone running their own WireGuard server - a VPS, a homelab box, a rack in
 a closet - who's currently either hand-editing `/etc/wireguard/wg0.conf`
@@ -80,10 +138,6 @@ never ask a server to run anything beyond stock WireGuard.
   verified, rollback-on-failure transaction with an ephemeral recovery copy.
 - Runs the exact same operations from a terminal UI, a scriptable CLI, or an
   MCP server for AI agents - one validated core behind all three.
-
-## See it
-
-![wgtui: opening a server, browsing Overview/Peers/Diagnose, and the top menu](docs/assets/demo.gif)
 
 ## Using the terminal UI
 
@@ -192,35 +246,6 @@ where that value actually comes from is entirely up to you.
 
 ---
 
-## Installing
-
-```bash
-scripts/install.sh          # latest release, or: scripts/install.sh vX.Y.Z
-```
-
-Installs a single static binary, man page, and shell completions under
-`~/.local/` - no root required, ever. Verifies `checksums.txt` before
-installing anything. Re-run it after each release to update; `wgtui
-version` tells you when a newer one exists but never installs it itself.
-
-`.deb`/`.rpm` packages are also published if you specifically want a
-system-managed install instead (these do need root):
-
-```bash
-sudo dpkg -i wgtui_*.deb   # Debian/Ubuntu
-sudo rpm -i wgtui_*.rpm    # Fedora
-```
-
-**Control client:** Linux amd64/arm64, macOS amd64/arm64.
-**Managed server:** Ubuntu, Debian, or Fedora with systemd - macOS is a
-client-only platform here, never a managed server.
-
-### Building from source
-
-```bash
-go build ./...
-```
-
 ## Security posture
 
 - The server's WireGuard private key never leaves the server; client
@@ -254,6 +279,13 @@ locally too. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how the
 codebase is organized and [`docs/SPEC.md`](docs/SPEC.md) for the full
 behavioral specification.
 
+Contributions, issues, and forks are welcome - fork it, improve it, break
+it, fix it.
+
+---
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[![Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
+Released under the [Apache License 2.0](LICENSE).

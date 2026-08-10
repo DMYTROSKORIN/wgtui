@@ -34,9 +34,9 @@ not exercised by any previously-tested server.
 
 ## [0.5.8] - 2026-08-09
 
-Security-hardening release addressing the findings of a full project audit
-(`~/Documents/wgtui-audit-2026-08-09.md`). No critical or high-severity
-issues were found; these are the low-severity and defense-in-depth fixes.
+Security-hardening release addressing the findings of a full internal
+project audit. No critical or high-severity issues were found; these are
+the low-severity and defense-in-depth fixes.
 
 ### Security
 
