@@ -42,7 +42,23 @@ func Apply(ctx context.Context, client *sshtransport.Client, plan Plan, prompts 
 	if err != nil {
 		return Outcome{}, fmt.Errorf("run transaction script: %w", err)
 	}
-	return parseOutcome(string(res.Stdout), res.ExitCode, plan)
+	return parseOutcome(string(scriptOutput(res)), res.ExitCode, plan)
+}
+
+// scriptOutput picks the field that actually holds the transaction
+// script's combined output. sshtransport.interactiveResult (a PTY has one
+// combined stream, so it can't split real stdout/stderr) puts everything
+// in Stdout on success and everything in Stderr on failure - and every
+// failure path in script.go's buildScript deliberately echoes a marker
+// plus an explanation (WGTUI_VALIDATE_FAILED, WGTUI_APPLY_FAILED_ROLLED_BACK,
+// etc.) specifically so parseOutcome can report it. Reading only Stdout
+// here discarded that explanation on every single failure, always falling
+// through to parseOutcome's generic empty-output error instead.
+func scriptOutput(res sshtransport.Result) []byte {
+	if len(res.Stdout) > 0 {
+		return res.Stdout
+	}
+	return res.Stderr
 }
 
 // parseOutcome interprets the transaction script's stdout markers. Split

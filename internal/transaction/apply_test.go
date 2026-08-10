@@ -3,6 +3,8 @@ package transaction
 import (
 	"strings"
 	"testing"
+
+	"github.com/DMYTROSKORIN/wgtui/internal/sshtransport"
 )
 
 func TestParseOutcome(t *testing.T) {
@@ -60,5 +62,25 @@ func TestParseOutcome_RawOutputNeverEmptyOnFailure(t *testing.T) {
 	}
 	if !strings.Contains(outcome.RawOutput, "garbage") {
 		t.Errorf("RawOutput = %q, want it to contain the raw script output", outcome.RawOutput)
+	}
+}
+
+// TestScriptOutput_FallsBackToStderrOnFailure guards against a real bug:
+// sshtransport.interactiveResult (a PTY has one combined stream) puts a
+// failed command's entire output in Result.Stderr, never Stdout - so
+// reading only res.Stdout in Apply meant every transaction failure (any
+// marker: validate failed, apply failed and rolled back, fingerprint
+// mismatch, or a genuinely unknown failure) discarded the explanation the
+// script always echoes, always falling through to parseOutcome's generic
+// empty-output error instead of the real reason.
+func TestScriptOutput_FallsBackToStderrOnFailure(t *testing.T) {
+	onSuccess := scriptOutput(sshtransport.Result{Stdout: []byte("WGTUI_OK\n")})
+	if string(onSuccess) != "WGTUI_OK\n" {
+		t.Errorf("on success, scriptOutput = %q, want Stdout content", onSuccess)
+	}
+
+	onFailure := scriptOutput(sshtransport.Result{Stderr: []byte("WGTUI_VALIDATE_FAILED\nsome wg-quick error\n")})
+	if !strings.Contains(string(onFailure), "WGTUI_VALIDATE_FAILED") {
+		t.Errorf("on failure, scriptOutput = %q, want it to fall back to Stderr content", onFailure)
 	}
 }

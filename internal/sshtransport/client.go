@@ -250,8 +250,8 @@ func interactiveResult(out []byte, err error) Result {
 	return Result{Stdout: normalized}
 }
 
-// normalizePTYCapture undoes two artifacts introduced by driving a
-// command through a local PTY rather than a plain pipe (confirmed against
+// normalizePTYCapture undoes artifacts introduced by driving a command
+// through a local PTY rather than a plain pipe (confirmed against
 // nas.paynet.one:2626 by comparing a captured `cat` of a config file
 // against `sha256sum` run on the same file directly: the two never
 // matched until this was added):
@@ -264,6 +264,17 @@ func interactiveResult(out []byte, err error) Result {
 //     line lands at the very start of the real command's output - this
 //     matches sudo's own end-of-password-entry line-clearing behavior,
 //     not anything the command itself printed.
+//  3. When the remote sudoers has `Defaults pwfeedback` (confirmed against
+//     an Ubuntu 26.04 target using a custom PAM prompt, "[sudo:
+//     authenticate] Password: "), sudo echoes one '*' per character as the
+//     password we just wrote is "typed", then erases that masked line with
+//     backspace/space control bytes once we send the trailing newline -
+//     none of which is real command output, but raw capture preserves the
+//     control bytes literally instead of the fully-erased result a real
+//     terminal screen would show. Left unstripped, this silently prefixed
+//     a masked/erased password readout onto the *next* config content
+//     wgtui built from the capture, corrupting it in a way `wg-quick
+//     strip` rejected - see stripPasswordFeedbackEcho.
 //
 // This matters because RunSudo/RunSudoScript are used to fetch config
 // text whose exact bytes get hashed (transaction.Fingerprint) and later
@@ -272,8 +283,40 @@ func interactiveResult(out []byte, err error) Result {
 // would fail every single time, not just on an actual concurrent edit.
 func normalizePTYCapture(out []byte) []byte {
 	s := strings.TrimLeft(string(out), " \t\r\n")
+	s = stripPasswordFeedbackEcho(s)
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	return []byte(s)
+}
+
+// stripPasswordFeedbackEcho removes a leading run of '*' characters
+// immediately followed by a run of only backspace/space bytes - sudo's
+// `pwfeedback` masked-password echo and its own line-clearing erasure,
+// never legitimate command output. A '*' run is only ever treated as this
+// artifact if at least as many backspace bytes follow as there were
+// asterisks - one erasing backspace per masked character, matching sudo's
+// own erase-the-line-I-just-echoed behavior - so ordinary text that
+// happens to start with asterisks (e.g. a "*** WARNING ***" banner) is
+// left alone: it has no backspace bytes at all.
+func stripPasswordFeedbackEcho(s string) string {
+	i := 0
+	for i < len(s) && s[i] == '*' {
+		i++
+	}
+	if i == 0 {
+		return s
+	}
+	j := i
+	backspaces := 0
+	for j < len(s) && (s[j] == '\b' || s[j] == ' ') {
+		if s[j] == '\b' {
+			backspaces++
+		}
+		j++
+	}
+	if backspaces < i {
+		return s
+	}
+	return strings.TrimLeft(s[j:], " \t\r\n")
 }
 
 // interactiveOutput picks what runInteractive returns as captured output:

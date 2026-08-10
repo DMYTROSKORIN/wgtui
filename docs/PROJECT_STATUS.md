@@ -1,19 +1,88 @@
 # Project checkpoint
 
-Last updated: 2026-08-09
+Last updated: 2026-08-10
 
 Active branch: `master`
 
-Release target: `v0.5.8`
+Release target: `v0.5.9`
 
-Release status: **v0.5.8 published, installed and complete** -
-security-hardening release fixing the low-severity and defense-in-depth
-findings from a full project audit (`~/Documents/wgtui-audit-2026-08-09.md`;
-no critical/high issues found)
+Release status: **v0.5.9 in progress** - two reliability fixes found via
+live verification against a fresh disposable target (a local Lima/Ubuntu
+26.04 VM, not the usual `192.168.122.245` test box), done in service of a
+broader session preparing the repo to go public (new install scripts,
+README rewrite, Apache 2.0 relicense, refreshed demo GIF - see below and
+continue there once this release is tagged).
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
+
+## In progress: preparing the repository to go public (2026-08-10)
+
+The user asked to make `DMYTROSKORIN/wgtui` public: relicense MIT to
+Apache 2.0, rewrite `README.md` styled after `DMYTROSKORIN/numi-kde`
+(one-line curl install and the demo GIF both moved to the very top,
+license badge), replace `scripts/install.sh`'s `gh`-CLI/private-repo
+download path with a plain-curl public-release download, audit every doc
+for private-repo/personal-path assumptions, and record a fresh
+`docs/assets/demo.gif` (the existing one predates the `v0.5.4` fix that
+moved the brand/version line to the bottom of every screen).
+
+To get a clean disposable WireGuard target for the new recording (the old
+`192.168.122.245` box wasn't reachable from this session's machine),
+installed `lima` (`brew install lima`) and brought up an Ubuntu 26.04 VM
+(`limactl start --name=wgtui-demo template:ubuntu-lts`), with a
+low-privilege `demo` sudo user and SSH password auth enabled - reachable
+at `127.0.0.1:<lima's forwarded ssh port>`, never a routable address.
+Attempting to prep that VM's peer state (register the server, install
+WireGuard, add a "laptop" peer - the same state the `.tape` script
+expects) surfaced two real, reproducible bugs, confirmed with a
+`-tags manual` reproduction against `internal/sshtransport` directly (not
+just inference) - fixed and released as `v0.5.9` before continuing the
+public-readiness work; see that section below for the fix detail. The
+GIF re-recording itself resumes after this checkpoint.
+
+## Completed in the `v0.5.9` release cycle
+
+Both bugs were found live, not in a unit test, exactly per this project's
+own testing philosophy - the target (a fresh Ubuntu 26.04 Lima VM) turned
+out to have `Defaults pwfeedback` in effect, a sudo configuration no
+previously-tested server exercised.
+
+- **Data corruption**: with `pwfeedback` on, sudo echoes one `*` per
+  password character as it's "typed" over the PTY, then erases that masked
+  line with backspace/space control bytes once submitted.
+  `sshtransport.normalizePTYCapture` didn't strip this, so it landed as a
+  garbage first line in the *next* config content built from that capture
+  (e.g. `peer add`'s "read the current interface config, append the new
+  peer" step) - failing remote `wg-quick strip` validation. Root-caused by
+  intercepting the real base64 transaction payload via a local `ssh` PATH
+  shim, then confirmed precisely with a `-tags manual` test hitting
+  `sshtransport.Client.RunSudo` directly against the Lima VM (debug hook
+  logged every raw chunk). Fix: `stripPasswordFeedbackEcho` recognizes the
+  artifact shape (`*` run immediately followed by at least as many
+  backspace bytes) and removes it; ordinary output that happens to start
+  with literal asterisks (no backspaces) is left alone. Tests:
+  `TestNormalizePTYCapture_StripsSudoPwfeedbackEcho`,
+  `TestStripPasswordFeedbackEcho_LeavesRealAsteriskContentAlone`.
+- **Blank error messages**: every transaction failure (validate failed,
+  apply failed and rolled back, fingerprint mismatch, or a genuinely
+  unknown failure) displayed as an empty `transaction script did not
+  report success (exit 1):` with no explanation, even though
+  `transaction/script.go`'s script always echoes one. Cause:
+  `transaction.Apply` read only `res.Stdout`, but
+  `sshtransport.interactiveResult` - by design, since a PTY is one
+  combined stream - puts a *failed* command's entire output in
+  `res.Stderr` instead, never `Stdout`. Fix: new `scriptOutput` helper
+  reads whichever field actually has content. Test:
+  `TestScriptOutput_FallsBackToStderrOnFailure`.
+- Live-verified the actual fix, not just the unit tests: rebuilt, reran
+  `wgtui peer add` against the same Lima VM with the same real generated
+  keys, got a clean `Added peer "laptop"...` instead of the blank error,
+  and confirmed with `wg show all dump` on the VM that the peer is really
+  there with the right `AllowedIPs`.
+- `gofmt`, `go build`, `go vet`, `go test ./...`, `go test -race ./...`,
+  `staticcheck`, `govulncheck`, `scripts/semgrep-scan.sh` all clean.
 
 ## Completed in the `v0.5.8` release cycle
 

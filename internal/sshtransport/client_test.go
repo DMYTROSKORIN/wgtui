@@ -84,3 +84,43 @@ func TestInteractiveOutputReturnsFullBufferOnErrorNotJustTheStrippedTail(t *test
 }
 
 var errTestSentinel = errors.New("test failure")
+
+// TestNormalizePTYCapture_StripsSudoPwfeedbackEcho reproduces byte-for-byte
+// what a real Ubuntu 26.04 target with `Defaults pwfeedback` sent back
+// after answering its sudo password prompt (captured live via a debug
+// hook on runInteractive): a leading space, one '*' per password
+// character, then sudo's own backspace/space erasure of that masked line,
+// directly followed by the real command output. Uncaught, this corrupted
+// prefix was silently embedded into the next config content a caller
+// built from the capture (transaction.Plan.NewContent), which then failed
+// `wg-quick strip` validation on the remote side.
+func TestNormalizePTYCapture_StripsSudoPwfeedbackEcho(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(" ") // sudo's leading space before the masked line
+	stars := 23        // matches a real captured password length
+	for i := 0; i < stars; i++ {
+		b.WriteByte('*')
+	}
+	b.WriteByte('\b')
+	for i := 0; i < stars; i++ {
+		b.WriteString(" \b\b")
+	}
+	b.WriteString("\n[Interface]\nPrivateKey = abc\n")
+
+	got := normalizePTYCapture([]byte(b.String()))
+	want := "[Interface]\nPrivateKey = abc\n"
+	if string(got) != want {
+		t.Fatalf("normalizePTYCapture did not strip pwfeedback echo:\ngot  %q\nwant %q", got, want)
+	}
+}
+
+// TestStripPasswordFeedbackEcho_LeavesRealAsteriskContentAlone guards
+// against the stripper eating legitimate output that happens to start
+// with literal asterisks but isn't followed by backspace/space erasure
+// bytes - the one thing that never happens in real command output.
+func TestStripPasswordFeedbackEcho_LeavesRealAsteriskContentAlone(t *testing.T) {
+	in := "*** WARNING: this is a real banner ***\nsome output\n"
+	if got := stripPasswordFeedbackEcho(in); got != in {
+		t.Fatalf("stripPasswordFeedbackEcho altered non-artifact content:\ngot  %q\nwant %q", got, in)
+	}
+}

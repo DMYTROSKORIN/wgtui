@@ -3,6 +3,35 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [0.5.9] - 2026-08-10
+
+Reliability fixes found during live verification against a target with
+`sudo`'s `pwfeedback` option enabled (masked per-character password echo) -
+not exercised by any previously-tested server.
+
+### Fixed
+
+- A remote target with `Defaults pwfeedback` in its sudoers echoes one `*`
+  per password character while it's "typed", then erases that masked line
+  with backspace/space control bytes once submitted. This artifact landed
+  at the start of any `RunSudo`/`RunSudoScript` capture and was not
+  stripped, so it got silently embedded as garbage content at the top of
+  the next config `peer add`/`configure`/other mutating operations wrote -
+  failing remote `wg-quick` validation every time on such a target.
+  `internal/sshtransport.normalizePTYCapture` now recognizes and strips
+  this specific artifact shape (asterisks immediately followed by at least
+  as many backspace bytes) while leaving ordinary output that happens to
+  start with literal asterisks untouched.
+- Every transaction failure (validate failed, apply failed and rolled
+  back, fingerprint mismatch, or a genuinely unknown failure) displayed as
+  a blank `transaction script did not report success (exit 1):` with no
+  explanation, even though the transaction script always echoes one. Cause:
+  `internal/transaction.Apply` read only the command's `Stdout`, but a PTY
+  is a single combined stream - `sshtransport.interactiveResult` correctly
+  routes a failed command's entire captured output into `Stderr` instead,
+  which `Apply` never looked at. It now reads whichever field actually has
+  content.
+
 ## [0.5.8] - 2026-08-09
 
 Security-hardening release addressing the findings of a full project audit
