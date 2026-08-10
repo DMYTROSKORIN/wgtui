@@ -11,7 +11,7 @@
 
 ---
 
-![wgtui: opening a server, browsing Overview/Peers/Diagnose, and the top menu](docs/assets/demo.gif)
+*(a demo recording is in the works and will land here)*
 
 ---
 
