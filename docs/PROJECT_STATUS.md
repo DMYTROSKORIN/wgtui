@@ -1,19 +1,74 @@
 # Project checkpoint
 
-Last updated: 2026-08-10
+Last updated: 2026-10-27
 
 Active branch: `master`
 
 Release target: `v0.5.11`
 
-Release status: **v0.5.11 published, installed and complete** - a UX
-follow-up to `v0.5.10` (server row click now opens, not just selects); see
-its own section below, then `v0.5.10`, then `v0.5.9` and the
-public-readiness session that followed it.
+Release status: **v0.5.11 published, installed and complete**; no release
+work pending. The most recent session (2026-10-27, docs-only, no tag)
+landed the README demo GIF that had been pulled twice - see its section
+first, then `v0.5.11`, `v0.5.10`, `v0.5.9` and the public-readiness
+session that followed it.
 
 This file is the durable restart point for work on `wgtui`. After an interrupted
 session, read it before changing code, then confirm the actual repository state
 with `git status --short --branch` and `git log -5 --oneline`.
+
+## Completed: README demo GIF, local install, MCP check (2026-10-27)
+
+Resumed after a two-month gap on the Fedora workstation (the `v0.5.9`-
+`v0.5.11` sessions ran on macOS). Three items, all closed:
+
+- **Demo GIF (third attempt, landed).** The two earlier recordings were
+  pulled: the second one (`89e84c6`) for "wrong aspect ratio" - a 112x65
+  pane produces a tall vertical strip, useless as a README hero image.
+  Root cause of the shape: the QR screen (`viewPeerReveal`, mode `qr`)
+  renders a 39-row half-block QR and refuses below `height-8`, so any
+  recording that includes it must be >= 47 rows tall. Decision: drop the
+  QR screen from the recording (it is also a secret - a published GIF is
+  the wrong place for it anyway) and record at 110x30, which covers every
+  other screen in the walkthrough with room to spare. Result:
+  `docs/assets/demo.gif`, 941x608 px, 163 KB, 46 s, 52 frames: unlock ->
+  server list -> SSH/sudo prompts -> Overview -> Peers -> add peer
+  "phone" (form, review plan, apply) -> "peer is ready" -> Peers list ->
+  Diagnose -> quit. Verified frame by frame (ImageMagick `-coalesce`): no
+  half-painted screens, no overlaps; grep of the cast confirms neither
+  password appears in it.
+- The vhs tape (`docs/assets/demo.tape`) is gone; it no longer matched
+  the recording (QR step) and its own header already recommended the
+  asciinema route. Replaced by `docs/assets/record-demo.sh`: the whole
+  storyboard with every pause inside one script (so tool/operator latency
+  can't bloat the cast), renders with `agg --font-size 14 --theme dracula
+  --fps-cap 12 --idle-time-limit 4` + `gifsicle -O3 --lossy=60 --colors
+  128`, and refuses to render if a password shows up in the cast. The
+  README placeholder line is replaced by the image again.
+- **Local install.** `~/.local/bin/wgtui` on Fedora was still `0.5.8`;
+  `scripts/install.sh v0.5.11` brought it to `0.5.11` (checksum OK).
+- **MCP server didn't connect in Claude Code** (`Connection closed`).
+  Cause: the vault at `~/.wgtui-config/vault.json` had a different master
+  password than `WGTUI_MASTER_PASSWORD` in `~/.claude.json`'s
+  `mcpServers.wgtui.env` - `wgtui mcp` exits with `unlock vault: wrong
+  master password or corrupted vault`, which the client reports only as a
+  closed connection. The user reset the password to match; a manual
+  stdio handshake then listed all 9 tools and `list_servers` returned 3
+  servers. Nothing to fix in code; worth remembering that this error
+  surfaces as a bare "Connection closed" on the client side.
+
+Test VM `192.168.122.245` (libvirt domain `ubuntu24.04`, was shut off,
+started with `virsh -c qemu:///system start ubuntu24.04` - works without
+sudo on this host): still has the `demo` user, WireGuard installed and
+`wg0` active. Its `wg0.conf` carried two stale peers ("phone", "mcptest")
+whose vault profiles no longer existed anywhere (shown as `unmanaged` in
+the Peers tab, which the TUI correctly refuses to act on). Removed both by
+editing the config on the VM (backup at `/root/wg0.conf.bak-<epoch>`) and
+`wg syncconf`. Current peers: `laptop` (added in the dry run) and `phone`
+(added live in the recording); both profiles live only in the throwaway
+demo vault, so to the real vault they are unmanaged - revoke them on the
+VM before the next recording, or pick other names. The VM's ed25519 host
+key was added to this workstation's `~/.ssh/known_hosts` (first contact
+from this machine; it is a local libvirt guest).
 
 ## Completed in the `v0.5.11` release cycle
 
@@ -944,16 +999,18 @@ previously-tested server exercised.
 
 ## Resume here
 
-`v0.5.8` is complete, published and installed; there is no pending release
-work. Future product work should start from a clean synchronized `master`.
+`v0.5.11` is complete, published and installed; there is no pending
+release work. Future product work should start from a clean synchronized
+`master`. The README demo GIF is in place (2026-10-27 section above);
+regenerate it with `docs/assets/record-demo.sh` if the UI changes.
 
 `192.168.122.245` (disposable Ubuntu 24.04 test VM) current state: has a
 dedicated `demo` user (password `demo-password-123`, sudo group member) -
 created specifically so demo recordings never show the operator's real
 login name on screen (see the `v0.5.4`→documentation-pass entry below for
 why). WireGuard is installed and configured on `wg0` with one peer
-("laptop", added through wgtui, matching what `docs/assets/demo.gif`
-shows). Don't repeat the install/configure test from scratch unless
+("laptop") plus "phone" from the 2026-10-27 recording - see that section
+for their vault situation. Don't repeat the install/configure test from scratch unless
 install/discovery behavior actually changes; do feel free to reuse the
 `demo` account for anything else that needs a non-identifying SSH user on
 this VM (another demo recording, MCP verification, etc.) instead of the

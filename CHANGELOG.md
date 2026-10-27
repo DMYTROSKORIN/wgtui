@@ -3,6 +3,15 @@
 All notable release changes are documented here. Versions follow semantic
 versioning while the project remains below 1.0.
 
+## [Unreleased]
+
+### Changed
+
+- README: the demo GIF is back, recorded wide (110x30) without the QR
+  screen so it works as a hero image instead of a tall strip.
+  `docs/assets/record-demo.sh` (asciinema + tmux + agg) replaces the vhs
+  tape, which had been unreliable and no longer matched the recording.
+
 ## [0.5.11] - 2026-08-10
 
 ### Changed
